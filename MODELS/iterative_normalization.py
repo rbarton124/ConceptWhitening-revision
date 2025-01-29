@@ -11,7 +11,6 @@ import torch
 
 __all__ = ['iterative_normalization', 'IterNorm']
 
-
 class iterative_normalization_py(torch.autograd.Function):
     @staticmethod
     def forward(ctx, *args, **kwargs):
@@ -31,8 +30,9 @@ class iterative_normalization_py(torch.autograd.Function):
             P = [None] * (ctx.T + 1)
             P[0] = torch.eye(d, device=X.device, dtype=X.dtype).expand(ctx.g, d, d)
             Sigma = torch.baddbmm(
-                P[0].mul(eps),
-                xc, xc.transpose(1, 2),
+                input=P[0].mul(eps),
+                batch1=xc,
+                batch2=xc.transpose(1, 2),
                 beta=1.0,
                 alpha=(1.0 / m)
             )
@@ -46,9 +46,9 @@ class iterative_normalization_py(torch.autograd.Function):
             for k in range(ctx.T):
                 P_k3 = torch.matrix_power(P[k], 3)
                 P[k + 1] = torch.baddbmm(
-                    P[k].mul(1.5),  # input
-                    P_k3,           # batch1
-                    Sigma_N,        # batch2
+                    input=P[k].mul(1.5),
+                    batch1=P_k3,
+                    batch2=Sigma_N,
                     beta=1.0,
                     alpha=-0.5
                 )
@@ -91,10 +91,26 @@ class iterative_normalization_py(torch.autograd.Function):
             P2 = P[k - 1].matmul(P[k - 1])
             g_sn += P2.matmul(P[k - 1]).matmul(g_P)
             g_tmp = g_P.matmul(sn)
-            # updated baddbmm calls:
-            g_P.baddbmm_(1.5, -0.5, g_tmp, P2)
-            g_P.baddbmm_(1.0, -0.5, P2, g_tmp)
-            g_P.baddbmm_(1.0, -0.5, P[k - 1].matmul(g_tmp), P[k - 1])
+
+            # fixed baddbmm_ calls to new style
+            g_P.baddbmm_(
+                batch1=g_tmp,
+                batch2=P2,
+                beta=1.5,
+                alpha=-0.5
+            )
+            g_P.baddbmm_(
+                batch1=P2,
+                batch2=g_tmp,
+                beta=1.0,
+                alpha=-0.5
+            )
+            g_P.baddbmm_(
+                batch1=P[k - 1].matmul(g_tmp),
+                batch2=P[k - 1],
+                beta=1.0,
+                alpha=-0.5
+            )
 
         g_sn += g_P
 
@@ -105,14 +121,13 @@ class iterative_normalization_py(torch.autograd.Function):
 
         g_sigma = (g_sn + g_sn.transpose(-2, -1) + 2.0 * g_tr) * (-0.5 / m * rTr)
 
-        # >>> The swap fix here: we want 'g_sigma' as batch1 and 'xc' as batch2,
-        #     ensuring the shapes align: [g, d, d] x [g, d, m] => [g, d, m].
-        #     The "input" to baddbmm is the same shape [g, d, m].
+        # we want 'g_sigma' as batch1, 'xc' as batch2
         g_x = torch.baddbmm(
-            wm.matmul(g_ - g_.mean(-1, keepdim=True)),  # shape [g, d, m]
-            g_sigma,                                    # shape [g, d, d]
-            xc,                                         # shape [g, d, m]
-            beta=1.0, alpha=1.0
+            input=wm.matmul(g_ - g_.mean(-1, keepdim=True)),  # shape [g, d, m]
+            batch1=g_sigma,
+            batch2=xc,
+            beta=1.0,
+            alpha=1.0
         )
 
         grad_input = g_x.reshape(grad.size(1), grad.size(0), *grad.size()[2:]).transpose(0, 1).contiguous()
@@ -278,7 +293,7 @@ class IterNormRotation(torch.nn.Module):
                         print("-------------------------------------------------------")
                         break
 
-                print(tau, F_Y_tau)
+                # print(tau, F_Y_tau)
                 Q = torch.bmm((I + 0.5 * tau * A).inverse(), I - 0.5 * tau * A)
                 R = torch.bmm(Q, R)
 
