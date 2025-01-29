@@ -1,0 +1,21 @@
+name: CW-old
+channels:
+    - pytorch
+    - nvidia
+    - defaults
+dependencies:
+    - python=3.11
+    - pytorch-cuda=12.1
+    - pytorch
+    - cudatoolkit
+    - torchvision
+    - numpy
+    - scikit-learn
+    - scikit-image
+    - matplotlib
+    - pillow
+    - seaborn
+    - opencv
+    - tensorboard
+    - pip:
+        - tqdm
