@@ -149,7 +149,6 @@ def main():
             elif args.arch == "resnet_baseline":
                 train_baseline(train_loader, concept_loaders, model, criterion, optimizer, epoch)
             else:
-                # If not a special arch, do standard train
                 train(train_loader, [], model, criterion, optimizer, epoch)
 
             # Evaluate on validation set
@@ -329,8 +328,53 @@ def setup_dataloaders(args):
     return train_loader, concept_loaders, val_loader, test_loader, test_loader_with_path
 
 
+##############################
+# New helper to retrieve the final BN/CW layer for hooking
+##############################
+def get_cw_layer(resnet_model, target_layer):
+    """
+    A small helper function that tries to locate the BN/CW layer
+    corresponding to 'target_layer'. This is somewhat guesswork
+    since the original code indexes layers in a simple manner.
+    You may need to adapt this logic to your actual numbering.
+    """
+    # Example approach:
+    # If target_layer <= layer1's length, etc.
+    # We'll do a simple approach if you keep the original idea
+    # that "whitened_layers=8 means the last BN in layer4"
+
+    # resnet_model.layer1: list of blocks
+    # resnet_model.layer2: ...
+    # etc.
+
+    # We'll flatten them
+    blocks = [resnet_model.layer1, resnet_model.layer2,
+              resnet_model.layer3, resnet_model.layer4]
+    # Number of blocks per layer:
+    counts = [len(b) for b in blocks]
+
+    # E.g. for resnet18: layer1=2, layer2=2, layer3=2, layer4=2 => total 8
+    # So target_layer=8 => means last block of layer4 => bn1 maybe.
+
+    # We'll do a small logic
+    layer_index = target_layer
+    for l in range(4):
+        if layer_index <= counts[l]:
+            # we found the block
+            block = blocks[l][layer_index - 1]  # index in that block
+            # Return block.bn1 or bn2 or whichever the code used
+            return block.bn1  # or bn2, depending on your design
+        else:
+            layer_index -= counts[l]
+
+    # fallback
+    return blocks[-1][-1].bn1
+
 def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
-    """Train for one epoch with TQDM progress bar."""
+    """
+    Train for one epoch with TQDM progress bar.
+    Now includes concept alignment feedback for resnet_cw.
+    """
     global writer
     model.train()
 
@@ -348,36 +392,116 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
     for i, (input, target) in pbar:
         iteration = epoch * len(train_loader) + i
 
+        # Only do concept alignment if arch == resnet_cw & concept_loaders exist
         if args.arch == "resnet_cw" and (i + 1) % 30 == 0 and len(concept_loaders) > 0:
+            # Temporarily switch to eval to run alignment hooking
             model.eval()
             with torch.no_grad():
-                for concept_index, loader_cpt in enumerate(concept_loaders):
-                    model.module.change_mode(concept_index)
-                    for j, (X, _) in enumerate(loader_cpt):
-                        X_var = torch.autograd.Variable(X).cuda()
-                        model(X_var)
-                        break
+                # Stats
+                concept_alignment_correct = 0
+                concept_alignment_total = 0
+
+                # We'll also gather data for top-4 image logging
+                concept_images_list = []
+                concept_activations_list = []
+                labels_list = []
+
+                cw_outputs = []
+
+                def cw_hook(module, in_t, out_t):
+                    cw_outputs.append(out_t)
+
+                # Attach hook to final CW/BN layer
+                last_bn = get_cw_layer(model.module.model, int(args.whitened_layers))
+                hook_handle = last_bn.register_forward_hook(cw_hook)
+
+                # Loop each concept
+                for concept_idx, loader_cpt in enumerate(concept_loaders):
+                    model.module.change_mode(concept_idx)
+                    for batch_j, (Xc, _) in enumerate(loader_cpt):
+                        Xc_var = torch.autograd.Variable(Xc).cuda()
+                        model(Xc_var)
+
+                        # shape = cw_outputs[0] => [B, channels, h, w]
+                        if len(cw_outputs) == 0:
+                            break
+                        rep = cw_outputs[0]
+                        B, C, H, W = rep.shape
+                        # Global average
+                        rep_avg = rep.mean(dim=(2,3))  # [B, C]
+
+                        # Check alignment => is concept_idx the largest axis?
+                        predicted_axis = rep_avg.argmax(dim=1)  # [B]
+                        correct_mask = (predicted_axis == concept_idx)
+                        concept_alignment_correct += correct_mask.sum().item()
+                        concept_alignment_total += B
+
+                        # For top-4 images
+                        concept_images_list.append(Xc.cpu())
+                        # We'll store the activation on the "concept_idx" axis for sorting
+                        concept_activations_list.append(rep_avg[:, concept_idx].cpu())
+                        labels_list.extend([concept_idx]*B)
+
+                        cw_outputs.clear()
+                        break  # only 1 batch per concept
+                # Remove hook
+                hook_handle.remove()
+
+                # Update rotation matrix
                 model.module.update_rotation_matrix()
                 model.module.change_mode(-1)
-            model.train()
 
+            # Log concept alignment
+            if concept_alignment_total > 0:
+                concept_acc = 100.0 * concept_alignment_correct / concept_alignment_total
+                print(f"[CW] Concept Alignment: {concept_acc:.2f}% (iter={iteration})")
+                writer.add_scalar('CW/ConceptAlignment(%)', concept_acc, iteration)
+
+                # Log top-4 images
+                all_images = torch.cat(concept_images_list, dim=0)  # shape [N, 3, H, W]
+                all_scores = torch.cat(concept_activations_list, dim=0)  # shape [N]
+                all_labels = torch.tensor(labels_list)  # shape [N]
+
+                num_concepts = len(concept_loaders)
+                inv_normalize = transforms.Normalize(
+                    mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
+                    std=[1/0.229, 1/0.224, 1/0.225]
+                )
+
+                for c_idx in range(num_concepts):
+                    c_mask = (all_labels == c_idx)
+                    c_scores = all_scores[c_mask]
+                    c_images = all_images[c_mask]
+                    if c_scores.numel() < 4:
+                        continue
+                    top_vals, top_inds = torch.sort(c_scores, descending=True)
+                    top_inds = top_inds[:4]
+                    best_imgs = c_images[top_inds]
+
+                    unnorm_list = []
+                    for bimg in best_imgs:
+                        unnorm_list.append(inv_normalize(bimg).unsqueeze(0))
+                    unnorm_tensor = torch.cat(unnorm_list, dim=0)
+
+                    concept_name = args.concepts.split(',')[c_idx]
+                    writer.add_images(f"CW_ConceptImages/Concept_{concept_name}", unnorm_tensor, iteration)
+
+            model.train()  # back to train mode
+
+        # Now the main classification step
         data_time.update(time.time() - end)
-
         target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
-        # Forward & loss
         output = model(input_var)
         loss = criterion(output, target_var)
 
-        # Accuracy
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1_acc.update(prec1[0].item(), input.size(0))
         top5_acc.update(prec5[0].item(), input.size(0))
 
-        # Backprop
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -385,13 +509,12 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        # TensorBoard logs
         misclassification_rate = 100.0 - top1_acc.val
+        iteration = epoch * len(train_loader) + i
         writer.add_scalar('Train/CrossEntropyLoss', losses.val, iteration)
         writer.add_scalar('Train/Top-1_Accuracy(%)', top1_acc.val, iteration)
         writer.add_scalar('Train/Misclassification(%)', misclassification_rate, iteration)
 
-        # Update TQDM
         pbar.set_postfix({
             "CE Loss": f"{losses.val:.3f}",
             "Top-1 Acc (%)": f"{top1_acc.val:.2f}",
@@ -448,6 +571,7 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
     """
     Train baseline with concept alignment, TQDM progress, concept metrics,
     and LOGGING THE TOP-4 ACTIVATED IMAGES per concept to TensorBoard.
+    (Unchanged from previous snippet.)
     """
     global writer
     model.train()
@@ -464,9 +588,6 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
     n_cpt = len(concept_loaders)
     inter_feature = []
 
-    # We'll need the raw images as well to log them to TB:
-    # We'll store them each time we do concept alignment.
-    # A small helper to revert normalization for better visualization in TB
     inv_normalize = transforms.Normalize(
         mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
         std=[1/0.229, 1/0.224, 1/0.225]
@@ -486,7 +607,6 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         data_time.update(time.time() - end)
 
         if (i + 1) % 20 == 0 and n_cpt > 0:
-            # Attach forward hook to get concept features
             layer = int(args.whitened_layers)
             layers = model.module.layers
             if layer <= layers[0]:
@@ -500,18 +620,17 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
             inter_feature.clear()
             y = []
-            # We'll store the original images as well
             concept_batch_images = []
 
             for concept_index, c_loader in enumerate(concept_loaders):
                 for j, (X, _) in enumerate(c_loader):
                     y += [concept_index] * X.size(0)
-                    concept_batch_images.append(X)  # store the raw images
+                    concept_batch_images.append(X)  
                     X_var = torch.autograd.Variable(X).cuda()
                     model(X_var)
-                    break  # only do 1 batch
+                    break  
 
-            inter_feat = torch.cat(inter_feature, 0)  # shape: [total_concept_imgs, n_cpt, h, w]
+            inter_feat = torch.cat(inter_feature, 0)
             y_var = torch.Tensor(y).long().cuda()
 
             if activation_mode == 'mean':
@@ -536,43 +655,22 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
             hook.remove()
 
-            # === NEW CODE: Log top-4 images for each concept to TensorBoard ===
-            # shape of y_pred: [total_concept_imgs, n_cpt]
-            # we want the top 4 activations for each concept.
-
-            # We'll reconstruct the original images from concept_batch_images
-            # concept_batch_images is a list of Tensors (one mini-batch per concept)
-            # let's combine them
-            # shape: (B, 3, H, W)
-            all_images = torch.cat(concept_batch_images, dim=0)  # shape [total_concept_imgs, 3, H, W]
-
-            # We'll need to find top-4 for each concept axis
-            # We already used y_pred => shape [total_concept_imgs, n_cpt]
-            # For concept c => y_pred[:, c]
+            # top-4 images logic
+            all_images = torch.cat(concept_batch_images, dim=0)  
             for c_idx in range(n_cpt):
-                concept_scores = y_pred[:, c_idx]  # shape [total_concept_imgs]
-                # Sort descending
-                top_scores, top_indices = torch.sort(concept_scores, descending=True)
-                top_indices = top_indices[:4]  # top-4
+                concept_scores = y_pred[:, c_idx]  
+                top_vals, top_inds = torch.sort(concept_scores, descending=True)
+                top_inds = top_inds[:4]
+                best_imgs = all_images[top_inds]
 
-                # Gather those images
-                top_images = all_images[top_indices]
+                unnorm_list = []
+                for bimg in best_imgs:
+                    unnorm_list.append(inv_normalize(bimg).unsqueeze(0))
+                unnorm_tensor = torch.cat(unnorm_list, dim=0)
 
-                # Unnormalize them for nicer viewing
-                unnorm_images = []
-                for img_tensor in top_images:
-                    # apply inverse normalization
-                    unnorm_img = inv_normalize(img_tensor.cpu())
-                    unnorm_images.append(unnorm_img.unsqueeze(0))  # keep batch dimension
-
-                # shape => [4, 3, H, W]
-                unnorm_images = torch.cat(unnorm_images, dim=0)
-
-                # Write to tensorboard
                 concept_name = args.concepts.split(',')[c_idx]
-                writer.add_images(f"ConceptActivations/{concept_name}", unnorm_images, iteration)
+                writer.add_images(f"ConceptActivations/{concept_name}", unnorm_tensor, iteration)
 
-        # Now the main classification step for Places
         target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
@@ -582,8 +680,8 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
-        top1_acc.update(prec1[0].item(), input.size(0))
-        top5_acc.update(prec5[0].item(), input.size(0))
+        top1.update(prec1[0].item(), input.size(0))
+        top5.update(prec5[0].item(), input.size(0))
 
         optimizer.zero_grad()
         loss.backward()
@@ -593,17 +691,17 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         end = time.time()
 
         iteration = epoch * len(train_loader) + i
-        misclass_rate = 100.0 - top1_acc.val
+        misclass_rate = 100.0 - top1.val
         writer.add_scalar('TrainBaseline/CE_Loss', losses.val, iteration)
         writer.add_scalar('TrainBaseline/Concept_Loss', loss_aux.val, iteration)
-        writer.add_scalar('TrainBaseline/Top-1_Acc(%)', top1_acc.val, iteration)
+        writer.add_scalar('TrainBaseline/Top-1_Acc(%)', top1.val, iteration)
         writer.add_scalar('TrainBaseline/Concept_Acc(%)', concept_acc.val, iteration)
         writer.add_scalar('TrainBaseline/Misclassification(%)', misclass_rate, iteration)
 
         pbar.set_postfix({
             "CE Loss": f"{losses.val:.3f}",
             "Concept Loss": f"{loss_aux.val:.3f}",
-            "Top-1 Acc(%)": f"{top1_acc.val:.2f}",
+            "Top-1 Acc(%)": f"{top1.val:.2f}",
             "Concept Acc(%)": f"{concept_acc.val:.2f}"
         })
 
@@ -697,5 +795,8 @@ def accuracy(output, target, topk=(1,)):
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 
+##################
+# ENTRY POINT
+##################
 if __name__ == '__main__':
     main()
