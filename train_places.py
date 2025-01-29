@@ -19,7 +19,7 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm  # <--- TQDM for modern progress bars
+from tqdm import tqdm  # for modern progress bars
 
 from MODELS.model_resnet import *
 from plot_functions import *
@@ -75,7 +75,7 @@ parser.add_argument('--evaluate', type=str, default=None,
                     help='type of evaluation')
 best_prec1 = 0
 
-# We use a global SummaryWriter (unchanged function signatures)
+# Global SummaryWriter (no function signature change)
 writer = None
 
 def main():
@@ -84,7 +84,7 @@ def main():
 
     print("args", args)
 
-    # Optional checks for concept folders
+    # Optional check for concept folders
     for c_name in args.concepts.split(','):
         concept_path = os.path.join(args.concept_data, 'concept_train', c_name)
         if not os.path.isdir(concept_path):
@@ -97,14 +97,14 @@ def main():
 
     args.prefix += '_' + '_'.join(args.whitened_layers.split(','))
 
-    # Create TensorBoard writer
+    # Create a TensorBoard writer
     current_time = str(int(time.time()))
     writer = SummaryWriter(log_dir=os.path.join('runs', f"{args.prefix}_{current_time}"))
 
-    # =============== Create Model ===============
+    # ========== Create Model ==========
     model = build_model(args)
 
-    # =============== Define Loss & Optimizer ===============
+    # ========== Define Loss & Optimizer ==========
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = torch.optim.SGD(
         model.parameters(), args.lr,
@@ -122,7 +122,7 @@ def main():
 
     cudnn.benchmark = True
 
-    # =============== Build Dataloaders ===============
+    # ========== Build Dataloaders ==========
     train_loader, concept_loaders, val_loader, test_loader, test_loader_with_path = setup_dataloaders(args)
 
     # Print dataset info
@@ -133,13 +133,13 @@ def main():
     print(f"Validation dataset size: {len(val_loader.dataset)} images")
     print(f"Test dataset size: {len(test_loader.dataset)} images")
 
-    # =============== Main Flow ===============
+    # ========== Main Flow ==========
     if args.evaluate is None:
         print("Starting training process...")
         best_prec1 = 0
 
         for epoch in range(args.start_epoch, args.start_epoch + args.epochs):
-            # Adjust and log LR
+            # Adjust LR
             current_lr = adjust_learning_rate(optimizer, epoch)
             writer.add_scalar('LR', current_lr, epoch)
 
@@ -149,6 +149,7 @@ def main():
             elif args.arch == "resnet_baseline":
                 train_baseline(train_loader, concept_loaders, model, criterion, optimizer, epoch)
             else:
+                # If not a special arch, do standard train
                 train(train_loader, [], model, criterion, optimizer, epoch)
 
             # Evaluate on validation set
@@ -167,7 +168,7 @@ def main():
                 'optimizer': optimizer.state_dict(),
             }, is_best, args.prefix)
 
-        # Show final results
+        # Final results
         print(f"Training complete. Best Top-1 Accuracy: {best_prec1:.2f}%")
         final_test_acc = validate(test_loader, model, criterion, epoch)
         print(f"Final Test Top-1 Accuracy: {final_test_acc:.2f}%")
@@ -182,8 +183,7 @@ def main():
 
 
 def build_model(args):
-    """Build the requested model architecture (CW or original) without changing function signatures."""
-    # Simplifies main() readability
+    """Create the requested model architecture (CW or original) without changing function signatures."""
     if args.arch == "resnet_cw":
         if args.depth == 50:
             return ResidualNetTransfer(365, args, 
@@ -234,7 +234,7 @@ def build_model(args):
 
 
 def setup_dataloaders(args):
-    """Set up train_loader, concept_loaders, val_loader, test_loader, test_loader_with_path."""
+    """Build train_loader, concept_loaders, val_loader, test_loader, test_loader_with_path."""
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
@@ -243,6 +243,7 @@ def setup_dataloaders(args):
     testdir = os.path.join(args.main_data, 'test')
     conceptdir_train = os.path.join(args.concept_data, 'concept_train')
 
+    # Main train dataset
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -258,6 +259,7 @@ def setup_dataloaders(args):
         num_workers=args.workers, pin_memory=False
     )
 
+    # Concept datasets
     concept_loaders = []
     for concept in args.concepts.split(','):
         c_dataset = datasets.ImageFolder(
@@ -276,6 +278,7 @@ def setup_dataloaders(args):
         )
         concept_loaders.append(c_loader)
 
+    # Validation dataset
     val_dataset = datasets.ImageFolder(
         valdir,
         transforms.Compose([
@@ -291,6 +294,7 @@ def setup_dataloaders(args):
         num_workers=args.workers, pin_memory=False
     )
 
+    # Test dataset
     test_dataset = datasets.ImageFolder(
         testdir,
         transforms.Compose([
@@ -306,6 +310,7 @@ def setup_dataloaders(args):
         num_workers=args.workers, pin_memory=False
     )
 
+    # Test dataset with path logging
     test_dataset_with_path = ImageFolderWithPaths(
         testdir,
         transforms.Compose([
@@ -325,27 +330,25 @@ def setup_dataloaders(args):
 
 
 def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
-    """Train for one epoch using TQDM for progress, with improved metric naming/logging."""
+    """Train for one epoch with TQDM progress bar."""
     global writer
     model.train()
 
-    # Meters for timing and metrics
+    # Meters
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    top1_acc = AverageMeter()   # Top-1 accuracy
-    top5_acc = AverageMeter()   # Top-5 accuracy
+    top1_acc = AverageMeter()
+    top5_acc = AverageMeter()
 
     end = time.time()
-
-    # Wrap in a TQDM progress bar for clarity
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
                 desc=f"Epoch [{epoch+1}] (Train)")
 
     for i, (input, target) in pbar:
         iteration = epoch * len(train_loader) + i
 
-        # If we have concept whitening, update the concept rotation matrix every 30 steps
+        # If arch has concept whitening, update rotation matrix
         if args.arch == "resnet_cw" and (i + 1) % 30 == 0 and len(concept_loaders) > 0:
             model.eval()
             with torch.no_grad():
@@ -359,8 +362,9 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
                 model.module.change_mode(-1)
             model.train()
 
+        # Timing
         data_time.update(time.time() - end)
-        
+
         target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
@@ -369,7 +373,7 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
         output = model(input_var)
         loss = criterion(output, target_var)
 
-        # Compute top-1 and top-5 accuracy
+        # Accuracy
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1_acc.update(prec1[0].item(), input.size(0))
@@ -383,13 +387,13 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        # Log to TensorBoard
+        # TensorBoard logs
         misclassification_rate = 100.0 - top1_acc.val
         writer.add_scalar('Train/CrossEntropyLoss', losses.val, iteration)
         writer.add_scalar('Train/Top-1_Accuracy(%)', top1_acc.val, iteration)
         writer.add_scalar('Train/Misclassification(%)', misclassification_rate, iteration)
 
-        # Update TQDM description with better naming
+        # Update TQDM
         pbar.set_postfix({
             "CE Loss": f"{losses.val:.3f}",
             "Top-1 Acc (%)": f"{top1_acc.val:.2f}",
@@ -400,7 +404,7 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
 
 
 def validate(val_loader, model, criterion, epoch):
-    """Validate model using TQDM for neat logs, returning top-1 accuracy."""
+    """Validate model with TQDM, returning top-1 accuracy."""
     global writer
     model.eval()
 
@@ -423,7 +427,6 @@ def validate(val_loader, model, criterion, epoch):
             output = model(input_var)
             loss = criterion(output, target_var)
 
-            # compute accuracy
             prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
             losses.update(loss.item(), input.size(0))
             top1_acc.update(prec1[0].item(), input.size(0))
@@ -446,7 +449,7 @@ def validate(val_loader, model, criterion, epoch):
 
 
 def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, epoch, activation_mode='pool_max'):
-    """Train baseline with concept alignment, using TQDM and clearer logging of concept metrics."""
+    """Train baseline with concept alignment, TQDM progress, and concept metrics."""
     global writer
     model.train()
 
@@ -456,9 +459,8 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
     top1_acc = AverageMeter()
     top5_acc = AverageMeter()
 
-    # Additional concept loss + concept accuracy
     loss_aux = AverageMeter()
-    concept_acc = AverageMeter()  # This is "Prec_cpt@1" in original
+    concept_acc = AverageMeter()
 
     n_cpt = len(concept_loaders)
     inter_feature = []
@@ -466,7 +468,6 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         inter_feature.append(output[:, :n_cpt, :, :])
 
     end = time.time()
-
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
                 desc=f"Epoch [{epoch+1}] (TrainBaseline)")
 
@@ -475,7 +476,6 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         data_time.update(time.time() - end)
 
         if (i + 1) % 20 == 0 and n_cpt > 0:
-            # Attach forward hook to get concept feature
             layer = int(args.whitened_layers)
             layers = model.module.layers
             if layer <= layers[0]:
@@ -487,7 +487,6 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
             elif layer <= layers[0] + layers[1] + layers[2] + layers[3]:
                 hook = model.module.model.layer4[layer - layers[0] - layers[1] - layers[2] - 1].bn1.register_forward_hook(hookf)
 
-            # Collect feature for each concept
             inter_feature.clear()
             y = []
             for concept_index, c_loader in enumerate(concept_loaders):
@@ -497,11 +496,9 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
                     model(X_var)
                     break
 
-            # Now compute concept classification metric
-            inter_feat = torch.cat(inter_feature, 0)  # shape: [total_cpt_images, n_cpt, h, w]
+            inter_feat = torch.cat(inter_feature, 0)
             y_var = torch.Tensor(y).long().cuda()
 
-            # Activation aggregator
             if activation_mode == 'mean':
                 y_pred = F.avg_pool2d(inter_feat, inter_feat.size()[2:]).squeeze()
             elif activation_mode == 'max':
@@ -522,7 +519,6 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
             cpt_loss.backward()
             optimizer.step()
 
-            # remove the hook
             hook.remove()
 
         target = target.cuda(non_blocking=True)
@@ -546,7 +542,7 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         batch_time.update(time.time() - end)
         end = time.time()
 
-        # Log to TensorBoard: normal classification + concept alignment
+        # TensorBoard logs
         misclass_rate = 100.0 - top1_acc.val
         writer.add_scalar('TrainBaseline/CE_Loss', losses.val, iteration)
         writer.add_scalar('TrainBaseline/Concept_Loss', loss_aux.val, iteration)
@@ -563,7 +559,7 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
 
 def plot_figures(args, model, test_loader_with_path, train_loader, concept_loaders, conceptdir):
-    """Plot or do additional evaluation. Not changing signature or internal logic."""
+    """Additional evaluation or plotting. No changes to function signature."""
     concept_name = args.concepts.split(',')
     out_dir = './plot/' + '_'.join(concept_name)
     if not os.path.exists(out_dir):
@@ -594,7 +590,7 @@ def plot_figures(args, model, test_loader_with_path, train_loader, concept_loade
 
 
 def save_checkpoint(state, is_best, prefix, checkpoint_folder='./checkpoints'):
-    """Unmodified logic except improved readability."""
+    """No changes to logic except minor readability."""
     if args.arch in ["resnet_cw", "densenet_cw", "vgg16_cw"]:
         concept_name = '_'.join(args.concepts.split(','))
         cpt_dir = os.path.join(checkpoint_folder, concept_name)
@@ -614,7 +610,7 @@ def save_checkpoint(state, is_best, prefix, checkpoint_folder='./checkpoints'):
 
 
 class AverageMeter(object):
-    """Unchanged logic: computes and stores average & current value"""
+    """Unchanged logic: computes and stores average & current value."""
     def __init__(self):
         self.reset()
 
@@ -630,7 +626,6 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-
 def adjust_learning_rate(optimizer, epoch):
     """Sets LR = initial LR * (0.1^(epoch//30)). Returns the new LR for logging."""
     lr = args.lr * (0.1 ** (epoch // 30))
@@ -638,14 +633,13 @@ def adjust_learning_rate(optimizer, epoch):
         param_group['lr'] = lr
     return lr
 
-
 def accuracy(output, target, topk=(1,)):
     """Compute top-k accuracy. Returns list of accuracies (floats)."""
     maxk = max(topk)
     batch_size = target.size(0)
 
     _, pred = output.topk(maxk, dim=1, largest=True, sorted=True)
-    pred = pred.t()  # shape [maxk, batch_size]
+    pred = pred.t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
 
     res = []
@@ -653,7 +647,6 @@ def accuracy(output, target, topk=(1,)):
         correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
-
 
 if __name__ == '__main__':
     main()
