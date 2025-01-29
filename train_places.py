@@ -183,7 +183,7 @@ def main():
 
 
 def build_model(args):
-    """Create the requested model architecture (CW or original) without changing function signatures."""
+    """Create the requested model architecture (CW or original)."""
     if args.arch == "resnet_cw":
         if args.depth == 50:
             return ResidualNetTransfer(365, args, 
@@ -348,7 +348,6 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
     for i, (input, target) in pbar:
         iteration = epoch * len(train_loader) + i
 
-        # If arch has concept whitening, update rotation matrix
         if args.arch == "resnet_cw" and (i + 1) % 30 == 0 and len(concept_loaders) > 0:
             model.eval()
             with torch.no_grad():
@@ -362,7 +361,6 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
                 model.module.change_mode(-1)
             model.train()
 
-        # Timing
         data_time.update(time.time() - end)
 
         target = target.cuda(non_blocking=True)
@@ -397,9 +395,7 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
         pbar.set_postfix({
             "CE Loss": f"{losses.val:.3f}",
             "Top-1 Acc (%)": f"{top1_acc.val:.2f}",
-            "Top-5 Acc (%)": f"{top5_acc.val:.2f}",
-            "BatchTime": f"{batch_time.val:.3f}s",
-            "DataTime": f"{data_time.val:.3f}s"
+            "Top-5 Acc (%)": f"{top5_acc.val:.2f}"
         })
 
 
@@ -449,7 +445,10 @@ def validate(val_loader, model, criterion, epoch):
 
 
 def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, epoch, activation_mode='pool_max'):
-    """Train baseline with concept alignment, TQDM progress, and concept metrics."""
+    """
+    Train baseline with concept alignment, TQDM progress, concept metrics,
+    and LOGGING THE TOP-4 ACTIVATED IMAGES per concept to TensorBoard.
+    """
     global writer
     model.train()
 
@@ -464,10 +463,21 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
     n_cpt = len(concept_loaders)
     inter_feature = []
+
+    # We'll need the raw images as well to log them to TB:
+    # We'll store them each time we do concept alignment.
+    # A small helper to revert normalization for better visualization in TB
+    inv_normalize = transforms.Normalize(
+        mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
+        std=[1/0.229, 1/0.224, 1/0.225]
+    )
+
     def hookf(module, input, output):
         inter_feature.append(output[:, :n_cpt, :, :])
 
     end = time.time()
+    concept_names = args.concepts.split(',')
+
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
                 desc=f"Epoch [{epoch+1}] (TrainBaseline)")
 
@@ -476,6 +486,7 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         data_time.update(time.time() - end)
 
         if (i + 1) % 20 == 0 and n_cpt > 0:
+            # Attach forward hook to get concept features
             layer = int(args.whitened_layers)
             layers = model.module.layers
             if layer <= layers[0]:
@@ -489,14 +500,18 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
             inter_feature.clear()
             y = []
+            # We'll store the original images as well
+            concept_batch_images = []
+
             for concept_index, c_loader in enumerate(concept_loaders):
                 for j, (X, _) in enumerate(c_loader):
                     y += [concept_index] * X.size(0)
+                    concept_batch_images.append(X)  # store the raw images
                     X_var = torch.autograd.Variable(X).cuda()
                     model(X_var)
-                    break
+                    break  # only do 1 batch
 
-            inter_feat = torch.cat(inter_feature, 0)
+            inter_feat = torch.cat(inter_feature, 0)  # shape: [total_concept_imgs, n_cpt, h, w]
             y_var = torch.Tensor(y).long().cuda()
 
             if activation_mode == 'mean':
@@ -521,15 +536,50 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
             hook.remove()
 
+            # === NEW CODE: Log top-4 images for each concept to TensorBoard ===
+            # shape of y_pred: [total_concept_imgs, n_cpt]
+            # we want the top 4 activations for each concept.
+
+            # We'll reconstruct the original images from concept_batch_images
+            # concept_batch_images is a list of Tensors (one mini-batch per concept)
+            # let's combine them
+            # shape: (B, 3, H, W)
+            all_images = torch.cat(concept_batch_images, dim=0)  # shape [total_concept_imgs, 3, H, W]
+
+            # We'll need to find top-4 for each concept axis
+            # We already used y_pred => shape [total_concept_imgs, n_cpt]
+            # For concept c => y_pred[:, c]
+            for c_idx in range(n_cpt):
+                concept_scores = y_pred[:, c_idx]  # shape [total_concept_imgs]
+                # Sort descending
+                top_scores, top_indices = torch.sort(concept_scores, descending=True)
+                top_indices = top_indices[:4]  # top-4
+
+                # Gather those images
+                top_images = all_images[top_indices]
+
+                # Unnormalize them for nicer viewing
+                unnorm_images = []
+                for img_tensor in top_images:
+                    # apply inverse normalization
+                    unnorm_img = inv_normalize(img_tensor.cpu())
+                    unnorm_images.append(unnorm_img.unsqueeze(0))  # keep batch dimension
+
+                # shape => [4, 3, H, W]
+                unnorm_images = torch.cat(unnorm_images, dim=0)
+
+                # Write to tensorboard
+                concept_name = args.concepts.split(',')[c_idx]
+                writer.add_images(f"ConceptActivations/{concept_name}", unnorm_images, iteration)
+
+        # Now the main classification step for Places
         target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
-        # Normal forward
         output = model(input_var)
         loss = criterion(output, target_var)
 
-        # Evaluate accuracy
         prec1, prec5 = accuracy(output.data, target, topk=(1, 5))
         losses.update(loss.item(), input.size(0))
         top1_acc.update(prec1[0].item(), input.size(0))
@@ -542,7 +592,7 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
         batch_time.update(time.time() - end)
         end = time.time()
 
-        # TensorBoard logs
+        iteration = epoch * len(train_loader) + i
         misclass_rate = 100.0 - top1_acc.val
         writer.add_scalar('TrainBaseline/CE_Loss', losses.val, iteration)
         writer.add_scalar('TrainBaseline/Concept_Loss', loss_aux.val, iteration)
@@ -559,7 +609,7 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
 
 
 def plot_figures(args, model, test_loader_with_path, train_loader, concept_loaders, conceptdir):
-    """Additional evaluation or plotting. No changes to function signature."""
+    """No changes in signature, leftover plotting logic."""
     concept_name = args.concepts.split(',')
     out_dir = './plot/' + '_'.join(concept_name)
     if not os.path.exists(out_dir):
@@ -590,7 +640,7 @@ def plot_figures(args, model, test_loader_with_path, train_loader, concept_loade
 
 
 def save_checkpoint(state, is_best, prefix, checkpoint_folder='./checkpoints'):
-    """No changes to logic except minor readability."""
+    """Saving logic unchanged, except we do minor readability."""
     if args.arch in ["resnet_cw", "densenet_cw", "vgg16_cw"]:
         concept_name = '_'.join(args.concepts.split(','))
         cpt_dir = os.path.join(checkpoint_folder, concept_name)
@@ -608,9 +658,8 @@ def save_checkpoint(state, is_best, prefix, checkpoint_folder='./checkpoints'):
             best_fn = os.path.join(checkpoint_folder, f'{prefix}_model_best.pth.tar')
             shutil.copyfile(filename, best_fn)
 
-
 class AverageMeter(object):
-    """Unchanged logic: computes and stores average & current value."""
+    """Utility to track average and current value for a metric."""
     def __init__(self):
         self.reset()
 
@@ -634,7 +683,7 @@ def adjust_learning_rate(optimizer, epoch):
     return lr
 
 def accuracy(output, target, topk=(1,)):
-    """Compute top-k accuracy. Returns list of accuracies (floats)."""
+    """Compute top-k accuracy. Returns a list of accuracies (floats)."""
     maxk = max(topk)
     batch_size = target.size(0)
 
