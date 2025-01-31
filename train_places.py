@@ -19,217 +19,214 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 
 from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm  # for modern progress bars
+from tqdm import tqdm
 
 from MODELS.model_resnet import *
 from plot_functions import *
 from PIL import ImageFile, Image
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
 model_names = sorted(
     name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name])
 )
 
-parser = argparse.ArgumentParser(description='PyTorch Places365 Training')
+parser = argparse.ArgumentParser(description='PyTorch Training Script (Places / CUB / Etc.)')
 parser.add_argument('--main_data', required=True,
                     help='path to main dataset (train/val/test)')
 parser.add_argument('--concept_data', required=True,
                     help='path to concept dataset (concept_train/concept_test)')
-parser.add_argument('--arch', '-a', metavar='ARCH', default='resnet',
-                    help='model architecture: ' +
-                         ' | '.join(model_names) +
-                         ' (default: resnet18)')
-parser.add_argument('--whitened_layers', default='8')
+parser.add_argument('--arch', '-a', default='resnet_cw',
+                    help='model architecture (e.g. resnet_cw, resnet_original, etc.)')
+parser.add_argument('--whitened_layers', default='5')
 parser.add_argument('--act_mode', default='pool_max')
-parser.add_argument('--depth', default=18, type=int, metavar='D',
-                    help='model depth')
-parser.add_argument('--ngpu', default=4, type=int, metavar='G',
-                    help='number of gpus to use')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
-                    help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=100, type=int, metavar='N',
+parser.add_argument('--depth', default=18, type=int,
+                    help='model depth (e.g. 18 or 50 for ResNet)')
+parser.add_argument('--ngpu', default=1, type=int,
+                    help='number of GPUs to use (DataParallel)')
+parser.add_argument('-j', '--workers', default=4, type=int,
+                    help='number of data loading workers')
+parser.add_argument('--epochs', default=100, type=int,
                     help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
+parser.add_argument('--start-epoch', default=0, type=int,
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('-b', '--batch-size', default=64, type=int,
-                    metavar='N', help='mini-batch size (default: 256)')
+                    help='mini-batch size')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
-                    metavar='LR', help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+                    help='initial learning rate')
+parser.add_argument('--momentum', default=0.9, type=float,
                     help='momentum')
 parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
-                    metavar='W', help='weight decay (default: 1e-4)')
+                    help='weight decay')
 parser.add_argument('--concepts', type=str, required=True,
                     help='comma-separated list of concepts')
 parser.add_argument('--print-freq', '-p', default=10, type=int,
-                    metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--resume', default='', type=str, metavar='PATH',
-                    help='path to latest checkpoint (default: none)')
-parser.add_argument("--seed", type=int, default=1234, metavar='BS',
-                    help='random seed for training (default: 64)')
-parser.add_argument("--prefix", type=str, required=True, metavar='PFX',
+                    help='print frequency')
+parser.add_argument('--resume', default='', type=str,
+                    help='path to a checkpoint to resume from (optional)')
+parser.add_argument('--only-load-weights', action='store_true',
+                    help='If set, only load the model weights from --resume, ignoring epoch/optimizer.')
+parser.add_argument("--seed", type=int, default=1234,
+                    help='random seed')
+parser.add_argument("--prefix", type=str, required=True,
                     help='prefix for logging & checkpoint saving')
 parser.add_argument('--evaluate', type=str, default=None,
                     help='type of evaluation')
-best_prec1 = 0
 
-# Global SummaryWriter (no function signature change)
+best_prec1 = 0
 writer = None
 
 def main():
     global args, best_prec1, writer
     args = parser.parse_args()
 
-    print("args", args)
+    print("Args:", args)
 
-    # Optional check for concept folders
+    # optional check for concept folders:
     for c_name in args.concepts.split(','):
         concept_path = os.path.join(args.concept_data, 'concept_train', c_name)
         if not os.path.isdir(concept_path):
             print(f"Warning: concept folder '{c_name}' not found at {concept_path}.")
 
-    # Set seeds for reproducibility
+    # seeds
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed)
 
+    # prefix
     args.prefix += '_' + '_'.join(args.whitened_layers.split(','))
 
-    # Create a TensorBoard writer
+    # Setup TensorBoard
     current_time = str(int(time.time()))
     writer = SummaryWriter(log_dir=os.path.join('runs', f"{args.prefix}_{current_time}"))
 
-    # ========== Create Model ==========
+    # Build the model (uninitialized or partially pretrained)
     model = build_model(args)
 
-    # ========== Define Loss & Optimizer ==========
-    criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = torch.optim.SGD(
-        model.parameters(), args.lr,
-        momentum=args.momentum,
-        weight_decay=args.weight_decay
-    )
+    # Setup checkpoint logic (load from resume if provided)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr,
+                                momentum=args.momentum, weight_decay=args.weight_decay)
+    epoch, best_prec1_ckpt = 0, 0
+    if args.resume and os.path.isfile(args.resume):
+        epoch, best_prec1_ckpt = load_checkpoint(
+            model, optimizer, args.resume,
+            only_weights=args.only_load_weights
+        )
+        # If we loaded epoch from checkpoint, but user also gave --start-epoch
+        # override the checkpoint epoch with the user-provided value if > 0
+        if args.start_epoch > 0:
+            print(f"Overriding checkpoint epoch {epoch} with user-supplied start_epoch {args.start_epoch}.")
+            epoch = args.start_epoch
+    else:
+        # Start from scratch
+        epoch = args.start_epoch
 
-    model = torch.nn.DataParallel(model, device_ids=list(range(args.ngpu)))
-    model = model.cuda()
-
-    print("Created model:")
-    print(model)
-    total_params = sum(p.data.nelement() for p in model.parameters())
-    print(f"Number of model parameters: {total_params}")
-
-    cudnn.benchmark = True
-
-    # ========== Build Dataloaders ==========
-    train_loader, concept_loaders, val_loader, test_loader, test_loader_with_path = setup_dataloaders(args)
-
-    # Print dataset info
-    print(f"Main train dataset size: {len(train_loader.dataset)} images")
-    concept_names = args.concepts.split(',')
-    for idx, c_loader in enumerate(concept_loaders):
-        print(f"Concept '{concept_names[idx]}' dataset size: {len(c_loader.dataset)} images")
-    print(f"Validation dataset size: {len(val_loader.dataset)} images")
-    print(f"Test dataset size: {len(test_loader.dataset)} images")
-
-    # ========== Main Flow ==========
-    if args.evaluate is None:
-        print("Starting training process...")
+    # keep track of best
+    if best_prec1_ckpt > 0:
+        best_prec1 = best_prec1_ckpt
+    else:
         best_prec1 = 0
 
-        for epoch in range(args.start_epoch, args.start_epoch + args.epochs):
-            # Adjust LR
-            current_lr = adjust_learning_rate(optimizer, epoch)
-            writer.add_scalar('LR', current_lr, epoch)
+    # DataParallel, move to GPU
+    model = nn.DataParallel(model, device_ids=list(range(args.ngpu)))
+    model = model.cuda()
 
-            # Train for one epoch
-            if args.arch == "resnet_cw":
-                train(train_loader, concept_loaders, model, criterion, optimizer, epoch)
-            elif args.arch == "resnet_baseline":
-                train_baseline(train_loader, concept_loaders, model, criterion, optimizer, epoch)
-            else:
-                train(train_loader, [], model, criterion, optimizer, epoch)
+    # Print summary
+    total_params = sum(p.data.nelement() for p in model.parameters())
+    print("Model created with arch:", args.arch)
+    print(f"Number of model parameters: {total_params}")
+    cudnn.benchmark = True
 
-            # Evaluate on validation set
-            val_top1 = validate(val_loader, model, criterion, epoch)
-            writer.add_scalar('Val/Top1_Accuracy', val_top1, epoch)
+    # Build Dataloaders
+    (train_loader,
+     concept_loaders,
+     val_loader,
+     test_loader,
+     test_loader_with_path) = setup_dataloaders(args)
 
-            # Check if best
-            is_best = val_top1 > best_prec1
-            best_prec1 = max(val_top1, best_prec1)
+    print("Train dataset size:", len(train_loader.dataset))
+    c_names = args.concepts.split(',')
+    for i, c_loader in enumerate(concept_loaders):
+        print(f"Concept '{c_names[i]}' size: {len(c_loader.dataset)}")
+    print("Val dataset size:", len(val_loader.dataset))
+    print("Test dataset size:", len(test_loader.dataset))
 
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_prec1': best_prec1,
-                'optimizer': optimizer.state_dict(),
-            }, is_best, args.prefix)
-
-        # Final results
-        print(f"Training complete. Best Top-1 Accuracy: {best_prec1:.2f}%")
-        final_test_acc = validate(test_loader, model, criterion, epoch)
-        print(f"Final Test Top-1 Accuracy: {final_test_acc:.2f}%")
-
-        writer.close()
-    else:
-        # Evaluate only
+    # If user just wants to evaluate
+    if args.evaluate is not None:
         plot_figures(args, model, test_loader_with_path,
-                     train_loader, concept_loaders, 
+                     train_loader, concept_loaders,
                      os.path.join(args.concept_data, 'concept_test'))
         writer.close()
+        return
+
+    # ============== TRAINING LOOP ==============
+    print(f"Starting training from epoch {epoch} for {args.epochs} total epochs.")
+    current_epoch = epoch
+    for e in range(epoch, epoch+args.epochs):
+        # adjust LR
+        lr_now = adjust_learning_rate(optimizer, e, args)
+        writer.add_scalar('LR', lr_now, e)
+
+        # normal train
+        if args.arch == 'resnet_cw':
+            train(train_loader, concept_loaders, model, nn.CrossEntropyLoss().cuda(), optimizer, e)
+        elif args.arch == 'resnet_baseline':
+            train_baseline(train_loader, concept_loaders, model, nn.CrossEntropyLoss().cuda(), optimizer, e)
+        else:
+            train(train_loader, [], model, nn.CrossEntropyLoss().cuda(), optimizer, e)
+
+        val_top1 = validate(val_loader, model, nn.CrossEntropyLoss().cuda(), e)
+        writer.add_scalar('Val/Top1_Accuracy', val_top1, e)
+
+        is_best = (val_top1 > best_prec1)
+        best_prec1 = max(val_top1, best_prec1)
+
+        save_checkpoint({
+            'epoch': e + 1,
+            'arch': args.arch,
+            'state_dict': model.module.state_dict(),  # since using DP
+            'best_prec1': best_prec1,
+            'optimizer': optimizer.state_dict(),
+        }, is_best, args.prefix)
+
+    # final test
+    print(f"Training done. Best top1 = {best_prec1:.2f}")
+    final_test = validate(test_loader, model, nn.CrossEntropyLoss().cuda(), args.epochs)
+    print(f"Final test top1 = {final_test:.2f}")
+    writer.close()
 
 
 def build_model(args):
-    """Create the requested model architecture (CW or original)."""
-    if args.arch == "resnet_cw":
-        if args.depth == 50:
-            return ResidualNetTransfer(365, args, 
-                                       [int(x) for x in args.whitened_layers.split(',')],
-                                       arch='resnet50', 
-                                       layers=[3, 4, 6, 3],
-                                       model_file='./checkpoints/resnet50_places365.pth.tar')
-        elif args.depth == 18:
-            return ResidualNetTransfer(365, args, 
-                                       [int(x) for x in args.whitened_layers.split(',')],
-                                       arch='resnet18', 
-                                       layers=[2, 2, 2, 2],
-                                       model_file='./checkpoints/resnet18_places365.pth.tar')
-    elif args.arch == "resnet_original" or args.arch == "resnet_baseline":
-        if args.depth == 50:
-            return ResidualNetBN(365, args, 
-                                 arch='resnet50',
-                                 layers=[3, 4, 6, 3],
-                                 model_file='./checkpoints/resnet50_places365.pth.tar')
-        elif args.depth == 18:
-            return ResidualNetBN(365, args,
-                                 arch='resnet18',
-                                 layers=[2, 2, 2, 2],
-                                 model_file='./checkpoints/resnet18_places365.pth.tar')
-    elif args.arch == "densenet_cw":
-        return DenseNetTransfer(365, args,
-                                [int(x) for x in args.whitened_layers.split(',')],
-                                arch='densenet161',
-                                model_file='./checkpoints/densenet161_places365.pth.tar')
-    elif args.arch == 'densenet_original':
-        return DenseNetBN(365, args, arch='densenet161',
-                          model_file='./checkpoints/densenet161_places365.pth.tar')
-    elif args.arch == "vgg16_cw":
-        return VGGBNTransfer(365, args,
-                             [int(x) for x in args.whitened_layers.split(',')],
-                             arch='vgg16_bn',
-                             model_file='./checkpoints/vgg16_bn_places365_12_model_best.pth.tar')
-    elif args.arch == "vgg16_bn_original":
-        return VGGBN(365, args,
-                     arch='vgg16_bn',
-                     model_file='./checkpoints/vgg16_bn_places365_12_model_best.pth.tar')
+    """
+    Return an unwrapped (not DataParallel) model based on args.arch, args.depth, and whether you want BN or CW.
+    We do NOT load any checkpoint here. That is done in `load_checkpoint`.
+    """
+    arch = args.arch.lower()
+    depth = args.depth
+    wh_layers = [int(x) for x in args.whitened_layers.split(',')]
+
+    if arch == 'resnet_cw':
+        return build_resnet_cw(num_classes=365, depth=depth,
+                               whitened_layers=wh_layers,
+                               act_mode=args.act_mode)
+    elif arch == 'resnet_original' or arch == 'resnet_baseline':
+        return build_resnet_bn(num_classes=365, depth=depth)
+    elif arch == 'densenet_cw':
+        return build_densenet_cw(num_classes=365, depth='161',
+                                 whitened_layers=wh_layers,
+                                 act_mode=args.act_mode)
+    elif arch == 'densenet_original':
+        return build_densenet_bn(num_classes=365, depth='161')
+    elif arch == 'vgg16_cw':
+        return build_vgg_cw(num_classes=365, whitened_layers=wh_layers,
+                            act_mode=args.act_mode)
+    elif arch == 'vgg16_bn_original':
+        return build_vgg_bn(num_classes=365)
     else:
-        print(f"Unrecognized arch {args.arch}, defaulting to resnet18 baseline.")
-        return ResidualNetBN(365, args,
-                             arch='resnet18',
-                             layers=[2,2,2,2],
-                             model_file='./checkpoints/resnet18_places365.pth.tar')
+        print(f"[Warning] unrecognized arch {arch}, default to build_resnet_bn(18)")
+        return build_resnet_bn(num_classes=365, depth=18)
 
 
 def setup_dataloaders(args):
@@ -387,11 +384,12 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
     losses = AverageMeter()
     top1_acc = AverageMeter()
     top5_acc = AverageMeter()
-    cw_align_meter = AverageMeter()  # <-- NEW meter for concept alignment
+    cw_align_meter = AverageMeter()
 
     end = time.time()
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
-                desc=f"Epoch [{epoch+1}] (Train)")
+                desc=f"Epoch [{epoch+1}] (Train)",
+                smoothing=0.15, miniters=10)
 
     for i, (input, target) in pbar:
         iteration = epoch * len(train_loader) + i
@@ -605,7 +603,8 @@ def train_baseline(train_loader, concept_loaders, model, criterion, optimizer, e
     concept_names = args.concepts.split(',')
 
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
-                desc=f"Epoch [{epoch+1}] (TrainBaseline)")
+                desc=f"Epoch [{epoch+1}] (TrainBaseline)",
+                smoothing=0.1, miniters=10)
 
     for i, (input, target) in pbar:
         iteration = epoch * len(train_loader) + i
@@ -761,6 +760,72 @@ def save_checkpoint(state, is_best, prefix, checkpoint_folder='./checkpoints'):
             best_fn = os.path.join(checkpoint_folder, f'{prefix}_model_best.pth.tar')
             shutil.copyfile(filename, best_fn)
 
+def load_checkpoint(model, optimizer, checkpoint_path, only_weights=False):
+    """
+    Load a checkpoint from 'checkpoint_path' into 'model' and 'optimizer'.
+    Returns (loaded_epoch, loaded_best_prec).
+
+    If only_weights=True, we only load the model's param weights
+    (ignoring 'epoch', 'best_prec', and 'optimizer' states).
+
+    We forcibly remove any dict entries that do not match the model's shapes
+    to avoid shape mismatch errors (common BN->CW scenario).
+    Then we load with strict=False.
+    """
+    print(f"Loading checkpoint from {checkpoint_path} (only_weights={only_weights})")
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+
+    # 1) Extract the raw state_dict from the checkpoint
+    raw_sd = checkpoint.get('state_dict', checkpoint)
+
+    # 2) Convert "module.*" -> "model.*", if your param naming uses "model.xxx"
+    new_sd = {}
+    for k, v in raw_sd.items():
+        # remove "module." prefix if present
+        if k.startswith("module."):
+            k_core = k[len("module."):]
+        else:
+            k_core = k
+        # Prepend "model." (if your model's named that). 
+        # If your model's param keys do NOT have "model." you can skip or adapt.
+        final_key = f"model.{k_core}"
+        new_sd[final_key] = v
+
+    # 3) Filter out incompatible shapes
+    filtered_sd = {}
+    model_sd = model.state_dict()  # current model param dict
+    for ckpt_key, ckpt_val in new_sd.items():
+        if ckpt_key in model_sd:
+            model_val = model_sd[ckpt_key]
+            if ckpt_val.shape == model_val.shape:
+                filtered_sd[ckpt_key] = ckpt_val
+            else:
+                print(f"[Info] Skipping param '{ckpt_key}' due to shape mismatch "
+                      f"({ckpt_val.shape} vs {model_val.shape})")
+        else:
+            print(f"[Info] Dropping param '{ckpt_key}' as it's not in current model.")
+
+    model.load_state_dict(filtered_sd, strict=False)
+
+    epoch, best_prec = 0, 0
+    if not only_weights:
+        if 'epoch' in checkpoint:
+            epoch = checkpoint['epoch']
+        if 'best_prec1' in checkpoint:
+            best_prec = checkpoint['best_prec1']
+        if 'optimizer' in checkpoint and hasattr(optimizer, 'load_state_dict'):
+            opt_sd = checkpoint['optimizer']
+            # If you want to skip shape mismatch in optimizer state as well,
+            # that can be trickier. But typically, if you mismatch BN->CW,
+            # you might just re-init optimizer. Up to you.
+            try:
+                optimizer.load_state_dict(opt_sd)
+            except Exception as e:
+                print(f"[Warning] Could not load optimizer state: {e}")
+
+    print(f"Checkpoint loaded. (Epoch={epoch}, BestPrec={best_prec:.2f})")
+    return epoch, best_prec
+
 class AverageMeter(object):
     """Utility to track average and current value for a metric."""
     def __init__(self):
@@ -778,12 +843,12 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def adjust_learning_rate(optimizer, epoch):
-    """Sets LR = initial LR * (0.1^(epoch//30)). Returns the new LR for logging."""
-    lr = args.lr * (0.1 ** (epoch // 30))
+def adjust_learning_rate(optimizer, epoch, args):
+    """Sets the LR = initial LR * (0.1 ^ (epoch // 30))."""
+    new_lr = args.lr * (0.1 ** (epoch // 30))
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    return lr
+        param_group['lr'] = new_lr
+    return new_lr
 
 def accuracy(output, target, topk=(1,)):
     """Compute top-k accuracy. Returns a list of accuracies (floats)."""
