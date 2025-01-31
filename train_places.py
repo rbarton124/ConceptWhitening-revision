@@ -370,10 +370,13 @@ def get_cw_layer(resnet_model, target_layer):
     # fallback
     return blocks[-1][-1].bn1
 
+
+
 def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
     """
     Train for one epoch with TQDM progress bar.
-    Now includes concept alignment feedback for resnet_cw.
+    Now includes concept alignment feedback for resnet_cw,
+    treating concept alignment as a meter so we can display it in TQDM postfix.
     """
     global writer
     model.train()
@@ -384,6 +387,7 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
     losses = AverageMeter()
     top1_acc = AverageMeter()
     top5_acc = AverageMeter()
+    cw_align_meter = AverageMeter()  # <-- NEW meter for concept alignment
 
     end = time.time()
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
@@ -392,16 +396,15 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
     for i, (input, target) in pbar:
         iteration = epoch * len(train_loader) + i
 
-        # Only do concept alignment if arch == resnet_cw & concept_loaders exist
+        # ==========================
+        # (A) CONCEPT ALIGNMENT for CW
+        # ==========================
         if args.arch == "resnet_cw" and (i + 1) % 30 == 0 and len(concept_loaders) > 0:
-            # Temporarily switch to eval to run alignment hooking
             model.eval()
             with torch.no_grad():
-                # Stats
                 concept_alignment_correct = 0
                 concept_alignment_total = 0
 
-                # We'll also gather data for top-4 image logging
                 concept_images_list = []
                 concept_activations_list = []
                 labels_list = []
@@ -411,56 +414,51 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
                 def cw_hook(module, in_t, out_t):
                     cw_outputs.append(out_t)
 
-                # Attach hook to final CW/BN layer
+                # Hook the final BN/CW layer
                 last_bn = get_cw_layer(model.module.model, int(args.whitened_layers))
                 hook_handle = last_bn.register_forward_hook(cw_hook)
 
-                # Loop each concept
+                # Feed each concept once
                 for concept_idx, loader_cpt in enumerate(concept_loaders):
                     model.module.change_mode(concept_idx)
-                    for batch_j, (Xc, _) in enumerate(loader_cpt):
+                    for j, (Xc, _) in enumerate(loader_cpt):
                         Xc_var = torch.autograd.Variable(Xc).cuda()
                         model(Xc_var)
 
-                        # shape = cw_outputs[0] => [B, channels, h, w]
                         if len(cw_outputs) == 0:
                             break
-                        rep = cw_outputs[0]
+                        rep = cw_outputs[0]  # shape [B, C, H, W]
                         B, C, H, W = rep.shape
-                        # Global average
-                        rep_avg = rep.mean(dim=(2,3))  # [B, C]
 
-                        # Check alignment => is concept_idx the largest axis?
+                        # global average
+                        rep_avg = rep.mean(dim=(2,3))  # [B, C]
                         predicted_axis = rep_avg.argmax(dim=1)  # [B]
                         correct_mask = (predicted_axis == concept_idx)
                         concept_alignment_correct += correct_mask.sum().item()
                         concept_alignment_total += B
 
-                        # For top-4 images
                         concept_images_list.append(Xc.cpu())
-                        # We'll store the activation on the "concept_idx" axis for sorting
                         concept_activations_list.append(rep_avg[:, concept_idx].cpu())
                         labels_list.extend([concept_idx]*B)
 
                         cw_outputs.clear()
-                        break  # only 1 batch per concept
-                # Remove hook
-                hook_handle.remove()
+                        break  # one batch each
 
-                # Update rotation matrix
+                hook_handle.remove()
                 model.module.update_rotation_matrix()
                 model.module.change_mode(-1)
 
-            # Log concept alignment
+            # measure alignment
             if concept_alignment_total > 0:
                 concept_acc = 100.0 * concept_alignment_correct / concept_alignment_total
-                print(f"[CW] Concept Alignment: {concept_acc:.2f}% (iter={iteration})")
+                cw_align_meter.update(concept_acc, 1)  # store in the meter
+
                 writer.add_scalar('CW/ConceptAlignment(%)', concept_acc, iteration)
 
-                # Log top-4 images
-                all_images = torch.cat(concept_images_list, dim=0)  # shape [N, 3, H, W]
-                all_scores = torch.cat(concept_activations_list, dim=0)  # shape [N]
-                all_labels = torch.tensor(labels_list)  # shape [N]
+                # Log top-4 images for each concept
+                all_images = torch.cat(concept_images_list, dim=0)
+                all_scores = torch.cat(concept_activations_list, dim=0)
+                all_labels = torch.tensor(labels_list)
 
                 num_concepts = len(concept_loaders)
                 inv_normalize = transforms.Normalize(
@@ -486,9 +484,11 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
                     concept_name = args.concepts.split(',')[c_idx]
                     writer.add_images(f"CW_ConceptImages/Concept_{concept_name}", unnorm_tensor, iteration)
 
-            model.train()  # back to train mode
+            model.train()
 
-        # Now the main classification step
+        # ==========================
+        # (B) MAIN CLASSIFICATION
+        # ==========================
         data_time.update(time.time() - end)
         target = target.cuda(non_blocking=True)
         input_var = torch.autograd.Variable(input)
@@ -511,14 +511,19 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
 
         misclassification_rate = 100.0 - top1_acc.val
         iteration = epoch * len(train_loader) + i
+
+        # Add scalar logs
         writer.add_scalar('Train/CrossEntropyLoss', losses.val, iteration)
         writer.add_scalar('Train/Top-1_Accuracy(%)', top1_acc.val, iteration)
         writer.add_scalar('Train/Misclassification(%)', misclassification_rate, iteration)
 
+        # Show concept alignment in TQDM
+        # cw_align_meter.val is the "most recently measured" concept alignment
         pbar.set_postfix({
             "CE Loss": f"{losses.val:.3f}",
             "Top-1 Acc (%)": f"{top1_acc.val:.2f}",
-            "Top-5 Acc (%)": f"{top5_acc.val:.2f}"
+            "Top-5 Acc (%)": f"{top5_acc.val:.2f}",
+            "Concept Align (%)": f"{cw_align_meter.val:.2f}"
         })
 
 
