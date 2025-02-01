@@ -51,7 +51,7 @@ ONE_BATCH_PER_CONCEPT = True
 # Pin memory usage in DataLoaders for performance improvement if enough system memory is available
 PIN_MEMORY = True
 
-RANDOM_SUBSET_SIZE = 1000
+RANDOM_SUBSET_SIZE = 300
 TOP_K_IMAGES = 4
 
 ##############################################################################
@@ -482,16 +482,16 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
                     model, concept_loaders, cw_align_meter, iteration, args
                 )
         
-        _log_main_data_topk(
-                model=model,
-                dataset=train_loader.dataset,
-                subset_size=RANDOM_SUBSET_SIZE,
-                top_k=TOP_K_IMAGES,
-                iteration=iteration,
-                whitened_layer=int(args.whitened_layers),
-                concept_count=len(concept_loaders),
-                writer=writer
-            )
+                _log_main_data_topk(
+                        model=model,
+                        dataset=train_loader.dataset,
+                        subset_size=RANDOM_SUBSET_SIZE,
+                        top_k=TOP_K_IMAGES,
+                        iteration=iteration,
+                        whitened_layer=int(args.whitened_layers),
+                        concept_count=len(concept_loaders),
+                        writer=writer
+                    )
 
         # MAIN CLASSIFICATION
         data_time.update(time.time() - end)
@@ -989,16 +989,7 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
-def _log_main_data_topk(
-    model,
-    dataset,
-    subset_size,
-    top_k,
-    iteration,
-    whitened_layer,
-    concept_count,
-    writer
-):
+def _log_main_data_topk(model, dataset, subset_size, top_k, iteration, whitened_layer, concept_count, writer):
     """
     Sample a random subset of images from the main dataset,
     run them through the CW layer to get concept-axis activations,
@@ -1013,83 +1004,73 @@ def _log_main_data_topk(
     :param concept_count: Number of concept axes (i.e., len(concept_loaders)).
     :param writer: TensorBoard SummaryWriter.
     """
-    if concept_count == 0:
-        return  # No concept axes to log
-
-    # 1) Random sample from the dataset indices
-    import random
-    if subset_size > len(dataset):
-        subset_size = len(dataset)
-    sampled_indices = random.sample(range(len(dataset)), subset_size)
-
-    # 2) Collect images (and optionally labels), transform them into a batch on GPU
-    #    Since dataset[i] typically returns (image, label), separate them.
-    images_list = []
-    for idx in sampled_indices:
-        img, _ = dataset[idx]
-        images_list.append(img.unsqueeze(0))  # shape [1, C, H, W]
-
-    # Combine into a single batch
-    batch_tensor = torch.cat(images_list, dim=0).cuda()  # [subset_size, C, H, W]
-
-    # 3) Hook the relevant CW layer so we can capture activations
-    model.eval()
-    cw_outputs = []
-
-    def cw_hook(module, in_t, out_t):
-        cw_outputs.append(out_t)
-
-    last_bn = get_cw_layer(model.module.model, whitened_layer)
-    hook_handle = last_bn.register_forward_hook(cw_hook)
-
-    with torch.no_grad():
-        # 4) Forward pass
-        model(batch_tensor)
-        # cw_outputs[0] should contain shape [subset_size, Channels, H, W]
-        if not cw_outputs:
-            # in case something failed or layer wasn't reached
-            hook_handle.remove()
-            model.train()
+    try:
+        if concept_count == 0 or subset_size == 0:
             return
 
-        rep = cw_outputs[0]  # shape [subset_size, Channels, H, W]
-        B, C, H, W = rep.shape
+        # Ensure subset_tensor is preloaded
+        if not hasattr(dataset, 'subset_tensor'):
+            fixed_indices = random.sample(range(len(dataset)), subset_size)
+            subset_images = [dataset[i][0] for i in fixed_indices]
+            dataset.subset_tensor = torch.stack(subset_images).cuda()
 
-        # Average activation across spatial dims => [subset_size, Channels]
-        rep_avg = rep.mean(dim=(2,3))
+        batch_tensor = dataset.subset_tensor  # [subset_size, C, H, W]
 
-        # 5) For each concept axis, find top-k images
-        # concept_count is the number of concept axes => [0..concept_count-1]
-        # We'll assume axis 0..(concept_count-1) map to your concept indices
-        from torchvision.utils import make_grid
+        # Process in chunks to avoid memory overload
+        chunk_size = 100
+        rep_avg_list = []
 
-        # We'll define an inverse-normalize to log the original images
-        inv_normalize = transforms.Normalize(
-            mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
-            std=[1/0.229, 1/0.224, 1/0.225]
-        )
+        model.eval()
+        cw_outputs = []
 
-        for c_idx in range(concept_count):
-            # Extract column c_idx => shape [subset_size]
-            axis_activations = rep_avg[:, c_idx]
-            # Find top-k
-            top_vals, top_inds = torch.topk(axis_activations, k=top_k, dim=0)
-            # Gather those images from batch_tensor
-            best_images = batch_tensor[top_inds]  # shape [top_k, C, H, W]
+        def cw_hook(module, in_t, out_t):
+            cw_outputs.append(out_t)
 
-            # Inverse normalize for logging (optional)
-            unnorm_list = []
-            for bimg in best_images:
-                unnorm_list.append(inv_normalize(bimg.cpu()).unsqueeze(0))
+        last_bn = get_cw_layer(model.module.model, whitened_layer)
+        hook_handle = last_bn.register_forward_hook(cw_hook)
 
-            unnorm_tensor = torch.cat(unnorm_list, dim=0)  # shape [top_k, C, H, W]
-            # Log to TensorBoard
-            concept_tag = f"MainData_ConceptAxis/Concept_{c_idx}"
-            writer.add_images(concept_tag, unnorm_tensor, iteration)
+        with torch.no_grad():
+            for i in range(0, subset_size, chunk_size):
+                chunk = batch_tensor[i:i + chunk_size]
+                model(chunk)
+                if not cw_outputs:
+                    continue
+                rep = cw_outputs[0]  # [chunk_size, C, H, W]
+                rep_avg = rep.mean(dim=(2, 3))  # [chunk_size, C]
+                rep_avg_list.append(rep_avg)
+                cw_outputs.clear()
 
-    # remove hook, revert to train mode
-    hook_handle.remove()
-    model.train()
+            rep_avg = torch.cat(rep_avg_list, dim=0)  # [subset_size, C]
+
+            # Log top-k images for each concept axis
+            inv_normalize = transforms.Normalize(
+                mean=[-0.485/0.229, -0.456/0.224, -0.406/0.225],
+                std=[1/0.229, 1/0.224, 1/0.225]
+            )
+            resize_transform = transforms.Resize((128, 128))
+
+            for c_idx in range(concept_count):
+                axis_activations = rep_avg[:, c_idx]
+                top_vals, top_inds = torch.topk(axis_activations, k=top_k, dim=0)
+                best_images = batch_tensor[top_inds]  # [top_k, C, H, W]
+
+                # Resize and normalize
+                resized_images = [resize_transform(img.cpu()) for img in best_images]
+                unnorm_list = [inv_normalize(img).unsqueeze(0) for img in resized_images]
+                unnorm_tensor = torch.cat(unnorm_list, dim=0)  # [top_k, C, 128, 128]
+
+                # Log to TensorBoard
+                concept_tag = f"MainData_ConceptAxis/Concept_{c_idx}"
+                writer.add_images(concept_tag, unnorm_tensor, iteration)
+
+        # Cleanup
+        hook_handle.remove()
+        model.train()
+    except Exception as e:
+        print(f"[Error] _log_main_data_topk failed: {e}")
+        if 'hook_handle' in locals():
+            hook_handle.remove()
+        model.train()
 
 
 if __name__ == '__main__':
