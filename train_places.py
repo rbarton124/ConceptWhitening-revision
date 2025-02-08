@@ -54,6 +54,8 @@ PIN_MEMORY = True
 RANDOM_SUBSET_SIZE = 300
 TOP_K_IMAGES = 4
 
+NUM_CLASSES = 200
+
 ##############################################################################
 # END GLOBAL CONSTANTS
 ##############################################################################
@@ -277,30 +279,30 @@ def build_model(args):
 
     if arch == 'resnet_cw':
         print("[build_model] Using build_resnet_cw()")
-        return build_resnet_cw(num_classes=365, depth=depth,
+        return build_resnet_cw(num_classes=NUM_CLASSES, depth=depth,
                                whitened_layers=wh_layers,
                                act_mode=args.act_mode)
     elif arch == 'resnet_original' or arch == 'resnet_baseline':
         print("[build_model] Using build_resnet_bn()")
-        return build_resnet_bn(num_classes=365, depth=depth)
+        return build_resnet_bn(num_classes=NUM_CLASSES, depth=depth)
     elif arch == 'densenet_cw':
         print("[build_model] Using build_densenet_cw()")
-        return build_densenet_cw(num_classes=365, depth='161',
+        return build_densenet_cw(num_classes=NUM_CLASSES, depth='161',
                                  whitened_layers=wh_layers,
                                  act_mode=args.act_mode)
     elif arch == 'densenet_original':
         print("[build_model] Using build_densenet_bn()")
-        return build_densenet_bn(num_classes=365, depth='161')
+        return build_densenet_bn(num_classes=NUM_CLASSES, depth='161')
     elif arch == 'vgg16_cw':
         print("[build_model] Using build_vgg_cw()")
-        return build_vgg_cw(num_classes=365, whitened_layers=wh_layers,
+        return build_vgg_cw(num_classes=NUM_CLASSES, whitened_layers=wh_layers,
                             act_mode=args.act_mode)
     elif arch == 'vgg16_bn_original':
         print("[build_model] Using build_vgg_bn()")
-        return build_vgg_bn(num_classes=365)
+        return build_vgg_bn(num_classes=NUM_CLASSES)
     else:
         print(f"[Warning] Unrecognized arch '{arch}', defaulting to build_resnet_bn(18).")
-        return build_resnet_bn(num_classes=365, depth=18)
+        return build_resnet_bn(num_classes=NUM_CLASSES, depth=18)
 
 
 def setup_dataloaders(args):
@@ -482,16 +484,16 @@ def train(train_loader, concept_loaders, model, criterion, optimizer, epoch):
                     model, concept_loaders, cw_align_meter, iteration, args
                 )
         
-                _log_main_data_topk(
-                        model=model,
-                        dataset=train_loader.dataset,
-                        subset_size=RANDOM_SUBSET_SIZE,
-                        top_k=TOP_K_IMAGES,
-                        iteration=iteration,
-                        whitened_layer=int(args.whitened_layers),
-                        concept_count=len(concept_loaders),
-                        writer=writer
-                    )
+                # _log_main_data_topk(
+                #         model=model,
+                #         dataset=train_loader.dataset,
+                #         subset_size=RANDOM_SUBSET_SIZE,
+                #         top_k=TOP_K_IMAGES,
+                #         iteration=iteration,
+                #         whitened_layer=int(args.whitened_layers),
+                #         concept_count=len(concept_loaders),
+                #         writer=writer
+                #     )
 
         # MAIN CLASSIFICATION
         data_time.update(time.time() - end)
@@ -983,7 +985,7 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        # Flatten the first k rows
+        # Flatten the first k row
         correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
