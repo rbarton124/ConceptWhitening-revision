@@ -25,13 +25,15 @@ from MODELS.model_resnet import *
 from plot_functions import *
 from PIL import ImageFile, Image
 
+import re
+
 ##############################################################################
 # GLOBAL CONFIGURABLE CONSTANTS
 ##############################################################################
 
-# Hard-coded schedule for learning rate decay: LR = LR * (LR_DECAY_FACTOR^(epoch // LR_DECAY_EPOCH))
-LR_DECAY_EPOCH = 30         # every 30 epochs
-LR_DECAY_FACTOR = 0.1       # multiply LR by 0.1
+# hard-coded schedule for learning rate decay: LR = LR * (LR_DECAY_FACTOR^(epoch // LR_DECAY_EPOCH))
+LR_DECAY_EPOCH = 30
+LR_DECAY_FACTOR = 0.1
 
 # Frequency of concept alignment updates
 CW_ALIGN_FREQ = 30          # every 30 iterations in train()
@@ -55,6 +57,8 @@ RANDOM_SUBSET_SIZE = 300
 TOP_K_IMAGES = 4
 
 NUM_CLASSES = 200
+
+FILLER_WORDS = {"has", "the", "and", "as", "of", "about", "to", "from", "in", "on", "with", "at", "for", "a", "an"}
 
 ##############################################################################
 # END GLOBAL CONSTANTS
@@ -135,18 +139,16 @@ def main():
     print("Args:", args)
     print("=========================================")
 
-    # Optional check for concept folders before running
+    # Check for concept folders before running
     for c_name in args.concepts.split(','):
         concept_path = os.path.join(args.concept_data, 'concept_train', c_name)
         if not os.path.isdir(concept_path):
             print(f"[Warning] Concept folder '{c_name}' not found at: {concept_path}. Please double-check.")
 
-    # Set manual seeds for reproducibility
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
     random.seed(args.seed)
 
-    # Incorporate the whitened_layers into prefix for clarity
     args.prefix += '_' + '_'.join(args.whitened_layers.split(','))
 
     # Initialize TensorBoard logging
@@ -156,7 +158,6 @@ def main():
     # Build the model (does not load checkpoint here, just constructs the architecture)
     model = build_model(args)
 
-    # Create an SGD optimizer for the model
     optimizer = torch.optim.SGD(
         model.parameters(),
         lr=args.lr,
@@ -164,7 +165,7 @@ def main():
         weight_decay=args.weight_decay
     )
 
-    # Possibly resume from checkpoint
+    # Checkpoint resume logic
     epoch, best_prec1_ckpt = 0, 0
     if args.resume and os.path.isfile(args.resume):
         # Load checkpoint: model weights and (optionally) optimizer, epoch, best_prec
@@ -177,10 +178,9 @@ def main():
             print(f"[Info] Overriding checkpoint epoch {epoch} with --start-epoch {args.start_epoch}")
             epoch = args.start_epoch
     else:
-        # Start from scratch
         epoch = args.start_epoch
 
-    # Record the best accuracy from checkpoint (if any)
+    # Record the best accuracy from checkpoint
     global best_prec1
     best_prec1 = max(0, best_prec1_ckpt)
 
@@ -853,13 +853,44 @@ def plot_figures(args, model, test_loader_with_path, train_loader, concept_loade
         print("[plot_figures] Finished AUC plotting.")
 
 
+def abbreviate_concepts(concepts_str, abbrev_length=4):
+    """
+    Abbreviate a string of concepts into a shorter folder name.
+    
+    Parameters:
+        concepts_str (str): A string of concepts separated by commas.
+        abbrev_length (int): Number of letters to take from each word.
+    
+    Returns:
+        str: The abbreviated folder name.
+    """
+    # Split the full string into individual concepts by comma.
+    concept_list = concepts_str.split(',')
+    abbreviated_concepts = []
+    
+    for concept in concept_list:
+        # Replace any non-alphanumeric character with a space.
+        cleaned = re.sub(r'[^a-zA-Z0-9]', ' ', concept)
+        # Lowercase and split into words.
+        words = cleaned.lower().split()
+        # Filter out filler words.
+        words = [w for w in words if w not in FILLER_WORDS]
+        # Abbreviate each word (if a word is shorter than abbrev_length, take it as is).
+        abbrev_words = [w[:abbrev_length] if len(w) >= abbrev_length else w for w in words]
+        # Join abbreviated words with underscores.
+        abbreviated_concepts.append('_'.join(abbrev_words))
+    
+    # Join the abbreviated concepts with an underscore to form the final folder name.
+    return '_'.join(abbreviated_concepts)
+
+
 def save_checkpoint(state, is_best, prefix, checkpoint_folder='./checkpoints'):
     """
     Save checkpoint to disk. If architecture is CW, store in subfolder named after concepts.
     Otherwise store in checkpoints/ prefix. Also copy file to *model_best.pth.tar if is_best=True.
     """
     if args.arch in ["resnet_cw", "densenet_cw", "vgg16_cw"]:
-        concept_name = '_'.join(args.concepts.split(','))
+        concept_name = abbreviate_concepts(args.concepts)
         cpt_dir = os.path.join(checkpoint_folder, concept_name)
         if not os.path.exists(cpt_dir):
             os.mkdir(cpt_dir)

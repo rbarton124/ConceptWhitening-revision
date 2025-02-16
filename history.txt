@@ -1,0 +1,1080 @@
+    1  ls -a
+    2  clear
+    3  ls -a
+    4  clear
+    5  python split_val_set.py ../DataSets/cats_real10000/ ../Datasets/cat2kat10000 2000
+    6  clear
+    7  python split_val_set.py ../DataSets/cats_real10000/ ../Datasets/cat2kat10000 2000 --postfix _A
+    8  python split_val_set.py ../DataSets/cats_real10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+    9  clear
+   10  python split_val_set.py ../DataSets/cats_real10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+   11  python split_val_set.py ../DataSets/cats_fake10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+   12  clear
+   13  python split_val_set.py ../DataSets/cats_real10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+   14  python split_val_set.py ../DataSets/cats_fake10000/ ../DataSets/cat2kat10000 2000 --postfix _B
+   15  cd ..
+   16  ls -a
+   17  clear
+   18  sbatch SlurmScripts/TrainCat2Kat10000.sh
+   19  tail -f logs/RunCats10000Training_5373894.out
+   20  clear
+   21  ls -a
+   22  tail -f logs/RunCats10000Training_5373894.out
+   23  ls -a
+   24  cd WorkFolder/ECE663_Final/
+   25  clear
+   26  ls -a
+   27  real path ../../logs/
+   28  realpath ../../logs/
+   29  clear
+   30  ln -s /usr/project/xtmp/rnb23/663Proj/logs /tmp/logs_sym_link
+   31  mv logs/RunCats10000Training_5373894.out ../../logs/
+   32  ls -a
+   33  rm -rf logs
+   34  ln -s /usr/project/xtmp/rnb23/663Proj/logs logs
+   35  mv ../../logs/RunCats10000Training_5373894.out 
+   36  mv ../../logs/RunCats10000Training_5373894.out .
+   37  mv RunCats10000Training_5373894.out logs
+   38  clear
+   39  tail -f logs/RunCats10000Training_5373894.out
+   40  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+   41  clear
+   42  tail -f logs/RunCats10000Training_5373894.out
+   43  clear
+   44  clear
+   45  cd ~
+   46  ls -a
+   47  code
+   48  cat .python_history
+   49  vim .my-bashrc
+   50  clear
+   51  vim .my-bashrc
+   52  vim .my-bashrc
+   53  HISTSIZE
+   54  echo $HISTSIZE
+   55  echo $HISTFILESIZE
+   56  clear
+   57  history>history3.txt
+   58  vim history3.txt 
+   59  clear
+   60  clear
+   61  clear
+   62  ls -a
+   63  rm history3.txt 
+   64  clear
+   65  clear
+   66  tail -n +1 -f logs/RunCats10000Training_5373894.out
+   67  fack
+   68  facl
+   69  setfacl
+   70  groups
+   71  clear
+   72  ls -a
+   73  cd ..
+   74  ls -a
+   75  ls -ld 663Proj
+   76  groups
+   77  ls -ld 663Proj/logs/
+   78  groups
+   79  groups cjb131
+   80  groups rnb23
+   81  clear
+   82  clear
+   83  realpath .
+   84  ls -a
+   85  cd 663
+   86  realpath 663Proj/
+   87  getfacl /usr/project/xtmp/rnb23/663Proj
+   88  getfacl /usr/project/xtmp/rnb23/663Proj/logs
+   89  clear
+   90  setfacl -R -m u::rwx,g::rwx,o::rwx /usr/project/xtmp/rnb23/663Proj/logs
+   91  setfacl -R -m d:u::rwx,d:g::rwx,d:o::rwx /usr/project/xtmp/rnb23/663Proj/logs
+   92  df -T /usr/project/xtmp/rnb23/663Proj/logs
+   93  clear
+   94  tail -n +1 -f logs/RunCats10000Training_5373894.out
+   95  clear
+   96  ls -a
+   97  cd 663Proj/
+   98  clear
+   99  tail -n +1 -f logs/RunCats10000Training_5373894.out
+  100  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  101  /home/users/rnb23/xtmp/miniconda3/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/places365setup.py
+  102  ls -a
+  103  cd ConceptWhitening/
+  104  git clone https://github.com/IslinaS/ConceptWhitening.git
+  105  clear
+  106  ls -a
+  107  cd ConceptWhitening/
+  108  ls -a
+  109  conda env create -f environment.yaml 
+  110  clear
+  111  conda enve remove --name CW
+  112  conda env remove --name CW
+  113  conda env create -f environment.yaml 
+  114  clear
+  115  srun
+  116  srun --nodes=1 --ntasks-per-node=1  --partition=compsci-gpu --gres=gpu:1 --time=01:00:00 --pty bash -i
+  117  srun --nodes=1 --ntasks-per-node=1  --partition=compsci-gpu --gres=gpu:1 --time=01:00:00 --pty bash -i
+  118  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  119  exit
+  120  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  121  cd data
+  122  ls -a
+  123  cd ConceptWhitening/ConceptWhitening/data/
+  124  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  125  install ipykernel
+  126  conda install ipykernel
+  127  conda install ipykernel
+  128  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  129  clear
+  130  ls -a
+  131  cd ConceptWhitening/ConceptWhitening/
+  132  clear
+  133  cd ConceptWhitening/ConceptWhitening/
+  134  conda activate CW
+  135  conda install -n CW ipykernel --update-deps --force-reinstall
+  136  ls -a
+  137  mv data/coco_dataset/annotations/annotations/ data/coco_dataset/annotations/
+  138  mv data/coco_dataset/annotations/annotations data/coco_dataset/annotations
+  139  mv data/coco_dataset/annotations/annotations data/coco_dataset/annotations
+  140  clear
+  141  mv data/coco_dataset/annotations/annotations data/coco_dataset/annotations
+  142  mv data/coco_dataset/annotations/annotations data/coco_dataset/
+  143  mv -r data/coco_dataset/annotations/annotations data/coco_dataset/
+  144  mv -r data/coco_dataset/annotations/annotations /data/coco_dataset/
+  145  mv -r data/coco_dataset/annotations/annotations data/coco_dataset/
+  146  mv -r data/coco_dataset/annotations/annotations/ data/coco_dataset/
+  147  mv data/coco_dataset/annotations/annotations/ data/coco_dataset/
+  148  clear
+  149  ls -a
+  150  cd data
+  151  exit
+  152  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  153  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  154  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  155  git status
+  156  clear
+  157  git fetch origin
+  158  cd ConceptWhitening/ConceptWhitening/
+  159  git fetch origin
+  160  clear
+  161  ls -a
+  162  git status
+  163  git add .
+  164  git commit -m "Added Coco dataset download and usage scripts and a conda environment file"
+  165  git push
+  166  git fetch origin
+  167  git push
+  168  clear
+  169  git push
+  170  git fetch origin
+  171  git push
+  172  git push
+  173  clear
+  174  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  175  ls -a
+  176  cd data/
+  177  rm coco_dataset -r
+  178  git status
+  179  clear
+  180  ls -a
+  181  cd ..
+  182  clear
+  183  git status
+  184  git push
+  185  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  186  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  187  cd ConceptWhitening/ConceptWhitening/data/coco_dataset/images
+  188  clear
+  189  rm val2017/val2017.zip
+  190  rm val2017/val2017.zip
+  191  rm train2017/train2017.zip
+  192  rm ../annotations/annotations.zip
+  193  clear
+  194  git status
+  195  git add .
+  196  git status
+  197  cd ../../..
+  198  ls -a
+  199  git add .
+  200  git status
+  201  git commit -m "added Coco Dataset scripts, added conda environment file"
+  202  git fetch origin
+  203  git checkout
+  204  status
+  205  git status
+  206  git branch
+  207  git fetch origin
+  208  git branch
+  209  git branch -r
+  210  git branch -a
+  211  git checkout origcw
+  212  git status
+  213  git checkout origin main
+  214  git checkout origin/main
+  215  git checkout origcw
+  216  git branch -a
+  217  git fetch origin
+  218  git branch -a
+  219  git checkout origcw
+  220  git checkout origin/main
+  221  git branch -d origcw
+  222  git branch -D origcw
+  223  git checkout origin/origcw
+  224  clear
+  225  git status
+  226  git checkout main
+  227  git status
+  228  git checkout origcw
+  229  git status
+  230  clear
+  231  ls -a
+  232  cd ConceptWhitening/
+  233  cd ConceptWhitening/
+  234  cd data/
+  235  python CocoDownload.py 
+  236  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  237  conda activate CW
+  238  cd ConceptWhitening/
+  239  cd ConceptWhitening/
+  240  cd data/
+  241  clear
+  242  python MakeCocoDF.py 
+  243  cd ..
+  244  ls 0a
+  245  ls -a
+  246  clear
+  247  ls -a
+  248  git add .
+  249  git commit -m "Switched COCO dataframe to use absolute path"
+  250  git push
+  251  exit()
+  252  exit
+  253  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  254  clear
+  255  ls -a
+  256  cd ConceptWhitening/ConceptWhitening/
+  257  clear
+  258  git push
+  259  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  260  ls -a
+  261  cd ConceptWhitening/ConceptWhitening/
+  262  git status
+  263  git fetch origin
+  264  clear
+  265  git status
+  266  clear
+  267  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  268  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/deactivate/bash/envVars.txt
+  269  cd ~/usr/project/xtmp/cs_474_cv/ConceptWhitening/
+  270  cd ~/usr/project/xtmp/cs_474_cv/ConceptWhitening/
+  271  cd ~
+  272  ls -a
+  273  cd ~
+  274  ls -a
+  275  cd ../../../..
+  276  l s-a
+  277  ls -a
+  278  cd usr/project/xtmp/cs_474_cv/ConceptWhitening/
+  279  cd usr/project/xtmp/cs474_cv/ConceptWhitening/
+  280  ls -a
+  281  mkdir Russ
+  282  ls -a
+  283  rmdir RUss
+  284  rmd Russ
+  285  rm Russ
+  286  ls -a
+  287  rm Russ
+  288  rm -r Russ
+  289  clear
+  290  cd ..
+  291  ls -a
+  292   cd ~
+  293  ls -a
+  294  cd xtmp
+  295  ls -a
+  296  cd 663Proj/
+  297  ls -a
+  298  cd WorkFolder
+  299  ls -a
+  300  cd ECE663_Final/
+  301  ls -a
+  302  cd SlurmScripts/
+  303  nano TrainCat2Kat10000.sh
+  304  ls -a
+  305  cd Bproj/
+  306  git clone https://github.com/charlieberens/ECE663FinalProjectB.git
+  307  conda env create -name HiDDeN
+  308  conda env create -n HiDDeN
+  309  conda env create --name HiDDeN
+  310  conda eneate --name HiDDeN
+  311  conda
+  312  conda create --name hidden
+  313  conda activate hidden
+  314  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/deactivate/bash/envVars.txt
+  315  clear
+  316  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  317  conda env create --name HiDDeN
+  318  conda create --name HiDDeN
+  319  conda activate img2img-turbo
+  320  clear
+  321  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  322  conda install -c pytorch torchvision
+  323  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  324  pip install datasets
+  325  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  326  pip install git+https://github.com/openai/CLIP.git
+  327  ln -s /home/users/cjb131/school/SigningDemo/data data
+  328  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  329  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  330  clear
+  331  clear
+  332  exit
+  333  conda activate hidden
+  334  ls -a
+  335  cd ECE663FinalProjectB/
+  336  ls -a
+  337  conda remove --name hidden
+  338  conda deactivate
+  339  conda remove --name hidden --all
+  340  conda env create -f environment.yml 
+  341  conda activate
+  342  conda env list
+  343  conda activate img2img-turbo
+  344  clear
+  345  srun --nodes=1 --ntasks-per-node=1  --partition=compsci-gpu --gres=gpu:1 --time=01:00:00 --pty bash -i
+  346  srun --nodes=1 --ntasks-per-node=1  --partition=compsci --gres=gpu:1 --time=01:00:00 --pty bash -i
+  347  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  348  c;ear
+  349  conda deactivate
+  350  conda create --name taketwo
+  351  conda create -n new python=3.9
+  352  clear
+  353  conda activate HiDDeN
+  354  clear
+  355  clear
+  356  conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
+  357  clear
+  358  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+  359  clear
+  360  conda activate new
+  361  conda deactivate
+  362  conda deactivate
+  363  conda activate new
+  364  clear
+  365  conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
+  366  conda install -c conda-forge matplotlib tqdm numpy -y
+  367  clear
+  368  cd ECE663FinalProjectB/
+  369  ls -a
+  370  clear
+  371  ls -a
+  372  git fetch origin master
+  373  cd ECE663FinalProjectB/
+  374  git fetch origin master
+  375  git pull origin master
+  376  clear
+  377  ln -s /usr/xtmp/cjb131/output_images output_images
+  378  cd visualization/output_images/2
+  379  tree
+  380  tree -d 1
+  381  tree --help
+  382  tree -d
+  383  cd ..
+  384  tree -d
+  385  tree
+  386  tree -d
+  387  /usr/bin/python3 /home/users/rnb23/xtmp/663Proj/Bproj/ECE663FinalProjectB/CLIP/main.py
+  388  git pull origin main
+  389  cd ECE663FinalProjectB/
+  390  git fetch origin main
+  391  git fetch origin master
+  392  git pull origin master
+  393  git commit -m "visualization stuff"
+  394  git add .
+  395  git commit -m "visualization stuff"
+  396  git push
+  397  ls -a
+  398  rm -r ConceptWhitening/
+  399  rm -r ConceptWhitening/ --force
+  400  clear
+  401  git clone https://github.com/IslinaS/ConceptWhitening.git
+  402  git clone https://github.com/IslinaS/ConceptWhitening.git
+  403  clear
+  404  conda env list
+  405  conda env list
+  406  conda
+  407  which conda
+  408  conda deactivate
+  409  conda activate
+  410  conda deactivate
+  411  which conda
+  412  rm -rf /home/users/rnb23/xtmp/miniconda3/bin/conda
+  413  which conda
+  414  clear
+  415  rm -rf ~/.condarc ~/.conda ~/.continuum
+  416  clear
+  417  nano ~/.bashrc
+  418  clear
+  419  ls -a ~
+  420  nano ~/.my-bashrc
+  421  nano ~/.my-bashrc
+  422  clear
+  423  wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+  424  ls -a
+  425  rm Miniconda3
+  426  rm Miniconda3-latest-Linux-x86_64.sh 
+  427  clear
+  428  cd ~
+  429  ls -a
+  430  clear
+  431  cd xtmp
+  432  ls -a
+  433  rm miniconda3/
+  434  rm miniconda3/ -r
+  435  find miniconda3 -type f | wc -l
+  436  rm miniconda3/ -r
+  437  rm miniconda3/ -rv
+  438  find miniconda3 -type f -delete -v
+  439  ls -a
+  440  find miniconda3 -type f -delete
+  441  find miniconda3 -type f -exec echo Deleting: {} \; -delete
+  442  rm miniconda3/ -rv
+  443  clear
+  444  ls -a
+  445  clear
+  446  lear
+  447  clear
+  448  cd ..
+  449  clear
+  450  ls -a
+  451  clear
+  452  ls -a
+  453  cd ../../..
+  454  ls -a
+  455  cd xtmp
+  456  ls -a
+  457  nvidia-smi
+  458  clear
+  459  ls -a
+  460  cd ConceptWhitening
+  461  conda env create -f environment.yml 
+  462  clear
+  463  conda env create -f environment.yml 
+  464  ls -a
+  465  cd ..
+  466  ls -a
+  467  cd ..
+  468  ls -a
+  469  cd rnb23/
+  470  ls -a
+  471  clear
+  472  cLEAR
+  473  clear
+  474  ls -a
+  475  mkdir -p ./miniconda3
+  476  wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ./miniconda3/miniconda.sh
+  477  bash ./miniconda3/miniconda.sh -b -u -p ./miniconda3
+  478  rm ./miniconda3/miniconda.sh
+  479  export PATH="$(pwd)/miniconda3/bin:$PATH"
+  480  ls -a ~
+  481  echo 'export PATH="$(pwd)/miniconda3/bin:$PATH"' >> ~/.my-bashrc
+  482  source ~/.bashrc
+  483  conda --version
+  484  clear
+  485  conda
+  486  conda init --all
+  487  clear
+  488  conda conda create -n CW
+  489  conda env conda create -n CW
+  490  conda conda create --name CW
+  491  conda create -n CW
+  492  git fetch origin main
+  493  git fetch origin master
+  494  ls -a
+  495  cd ConceptWhitening/
+  496  cd ConceptWhitening
+  497  clear
+  498  git fetch origin main
+  499  git pull origin main
+  500  rm ../ConceptWhitening-old/ -rfv
+  501  clera
+  502  clear
+  503  conda env create -f environment.yml
+  504  clear
+  505  conda remove --help
+  506  conda remove CW --all
+  507  conda remove -n CW --all
+  508  ls -a
+  509  cd ConceptWhitening
+  510  conda remove --name CW --all
+  511  rm ../../miniconda3/envs/CW -rf
+  512  conda remove --name CW --all
+  513  rm ../../miniconda3/envs/.conda_envs_dir_test clear
+  514  clear
+  515  conda env create -f environment.yml 
+  516  cd ../..
+  517  ls -a
+  518  cd ../..
+  519  ls -a
+  520  cd ..
+  521  ls -a
+  522  nvidia-smi
+  523  clear
+  524  conda env create -f environment.yml
+  525  clear
+  526  conda env create -f environment.yml
+  527  clear
+  528  conda
+  529  clear
+  530  clear
+  531  clear
+  532  clear
+  533  conda create --name CW-old  python=3.11 
+  534  clear
+  535  conda activate CW-old
+  536  clear
+  537  conda install pytorch-cuda=12.1 pytorch cudatoolkit -c pytorch -c nvidia -y
+  538  clear
+  539  python download.py
+  540  conda install requests
+  541  clear
+  542  python download.py
+  543  conda install kaggle
+  544  clear
+  545  conda install kaggle
+  546  pip install kaggle
+  547  clear
+  548  python download.py
+  549  clear
+  550  python download.py
+  551  cd /home/users/rnb23/.config/
+  552  ls -a
+  553  cd kaggle/
+  554  ls -a
+  555  nano kaggle.json
+  556  cat kaggle.json 
+  557  clear
+  558  python download.py
+  559  conda activate CW-old
+  560  clear
+  561  python download.py
+  562  clear
+  563  python download.py
+  564  clear
+  565  python download.py
+  566  clear
+  567  squeue -u $USER
+  568  scontrol show job -d 8070155
+  569  htop
+  570  conda activate CW-old
+  571  conda deactivate
+  572  clear
+  573  conda env remove -n 'CW-old'
+  574  conda activate CW-old
+  575  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/
+  576  clear
+  577  clear
+  578  cd ConceptWhitening/
+  579  conda env create -f environment.yml
+  580  clear
+  581  conda env create -f environment.yml
+  582  [200~conda config --show channels
+  583  conda config --show channels
+  584  conda config --remove channels "conda-forge nvidia bioconda"
+  585  conda config --show-sources
+  586  conda config --remove channels "conda-forge nvidia bioconda "
+  587  clear
+  588  conda config --show-sources
+  589  cd /usr/xtmp/rnb23/miniconda3/.condarc
+  590  cd ~/usr/xtmp/rnb23/miniconda3/.condarc
+  591  cd ~/usr/xtmp/rnb23/miniconda3/
+  592  cd home
+  593  clear
+  594  ls -a
+  595  clear
+  596  conda config --show-sources
+  597  nano /home/users/rnb23/.conda/envs
+  598  cd /home/users/rnb23/.conda/envs
+  599  ls -a
+  600  cd ..
+  601  ls -a
+  602  cd ..
+  603  ls -a
+  604  cd xtm
+  605  cd xtmp
+  606  ls -a
+  607  cd miniconda3/
+  608  ls -a
+  609  nana .condarc
+  610  nano .condarc
+  611  clear
+  612  conda config --show-sources
+  613  conda config --show channels
+  614  conda clean --all
+  615  y
+  616  clear
+  617  conda config --show channels
+  618  conda config --remove-key channels
+  619  conda config --show-sources
+  620  env | grep -i conda
+  621  unset CONDA_CHANNELS
+  622  env | grep -i conda
+  623  clear
+  624  nano ~/.bashrc
+  625  nano ~/.my-bashrc 
+  626  clear
+  627  conda config --show channels
+  628  conda config --add channels conda-forge
+  629  conda config --add channels nvidia
+  630  conda config --add channels bioconda
+  631  conda config --show channels
+  632  clear
+  633  ls -a
+  634  conda env create -f environment.yml
+  635  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  636  clear
+  637  conda env create -f environment.yml
+  638  clear
+  639  ls  ~/ -a
+  640  nano ~/.bash_profile 
+  641  nano ~/.my-bash_profile 
+  642  grep -i "CONDA_CHANNELS" /etc/* /etc/bash* /etc/profile* 2>/dev/null
+  643  clear
+  644  grep -i "CONDA_CHANNELS" ~/.*
+  645  grep -ri "CONDA_CHANNELS" /etc/
+  646  clear
+  647  nano ~/.condarc
+  648  ls ~/.conda/env
+  649  ls ~/.conda/envs/ -a
+  650  nano ~/.condarc
+  651  nano ~/.zshrc 
+  652  ls ~/ -a
+  653  cd xtmp
+  654  ls ~/xtmp/ -a
+  655  ls ~/xtmp/miniconda3/ -a
+  656  nano ~/xtmp/miniconda3/.condarc
+  657  ls ~/.conda/ -a
+  658  clear
+  659  grep -i "CONDA_CHANNELS" ~/.*
+  660  grep -i "h" ~/.*
+  661  clear
+  662  grep -ri "CONDA_CHANNELS" /etc/
+  663  clear
+  664  conda config --show channels
+  665  unset CONDA_CHANNELS
+  666  conda config --show channels
+  667  conda env create -f environment.yml
+  668  clear
+  669  conda activate ConceptWhiteningOld
+  670  clear
+  671  ls -a
+  672  python download.py
+  673  clear
+  674  python3 cropping_images_COCO.py     -coco-path data/coco     -concept-path data/concepts
+  675  lscpu
+  676  nproc --all
+  677  clera
+  678  clear
+  679  ls -a
+  680  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  681  clear
+  682  ls checkpoints/ -a
+  683  clear
+  684  clear
+  685  nano ~/.my-bash_profile 
+  686  nano ~/.my-bashrc
+  687  conda config --show channels
+  688  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  689  clear
+  690  rm -rfv data/concepts/
+  691  clear
+  692  ls -a
+  693  clear
+  694  clear
+  695  python3 cropping_images_COCO.py -coco-path data/coco -concept-path data/concepts
+  696  conda activate ConceptWhiteningOld
+  697  clear
+  698  python3 cropping_images_COCO.py -coco-path data/coco -concept-path data/concepts
+  699  pip install tqdm
+  700  python3 cropping_images_COCO.py -coco-path data/coco -concept-path data/concepts
+  701  clear
+  702  ls -a
+  703  python3 train_places.py     --main_data data/places365     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  704  clear
+  705  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  706  clear
+  707  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  708  conda install opencv
+  709  unset CONDA_CHANNELS
+  710  conda install opencv
+  711  clear
+  712  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  713  conda install --force-reinstall opencv torchvision numpy
+  714  clear
+  715  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  716  clear
+  717  conda install --force-reinstall numpy<2
+  718  conda install --force-reinstall numpy<2
+  719  conda install --force-reinstall numpy<2
+  720  clear
+  721  conda install numpy=1.23.5
+  722  clear
+  723  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  724  conda deactivate
+  725  clear
+  726  conda env create -f environment.yml
+  727  conda activate CW-old
+  728  clear
+  729  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  730  conda activate CW-old
+  731  clear
+  732  conda activate CW-old
+  733  conda deactivate
+  734  clear
+  735  conda deactivate
+  736  conda activate
+  737  clear
+  738  conda activate CW-old
+  739  clear
+  740  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  741  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  742  clear
+  743  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  744  conda install tensorboard
+  745  clear
+  746  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  747  clear
+  748  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  749  clear
+  750  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  751  conda activate CW-old
+  752  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  753  clear
+  754  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  755  conda activate ConceptWhiteningOld
+  756  ls -a
+  757  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  758  clear
+  759  history > history.txt
+  760  clera
+  761  clear
+  762  nvidia-smi
+  763  clear
+  764  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  765  conda list
+  766  pip uninstall numpy
+  767  clear
+  768  conda list
+  769  clear
+  770  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  771  clear
+  772  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  773  clear
+  774  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  775  echo $PYTHONPATH
+  776  ls -la
+  777  conda list | grep numpy
+  778  conda install --force-reinstall "numpy<2"  # or a stable 1.x version
+  779  clear
+  780  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  781  python3 -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  782  clear
+  783  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  784  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  785  clear
+  786  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  787  clear
+  788  conda info --envs
+  789  which python
+  790  echo $CONDA_DEFAULT_ENV
+  791  clear
+  792  conda deactivate
+  793  clear
+  794  nvidia-smi
+  795  clear
+  796  clear
+  797  tensorboard --logdir=runs
+  798  clear
+  799  tensorboard --logdir=runs
+  800  conda activate o
+  801  conda activate ConceptWhiteningOld
+  802  conda deactivate
+  803  conda activate CW-old
+  804  clear
+  805  tensorboard --logdir=runs
+  806  cd ConceptWhitening/oldCW/ConceptWhitening/
+  807  clear
+  808  conda activate CW-old
+  809  clear
+  810  tensorboard --logdir=runs
+  811  ls -a
+  812  clear
+  813  git init
+  814  rm .git -r
+  815  clear
+  816  tensorboard --logdir=runs
+  817  conda activate CW-old
+  818  clear
+  819  tensorboard --logdir=runs
+  820  clear
+  821  git init
+  822  ls -a
+  823  git add .
+  824  rm .git/ -r
+  825  ls -a
+  826  clear
+  827  rm .git -r
+  828  ls -a
+  829  git init
+  830  ls -a
+  831  git add .
+  832  git commit -m "Initial Commit"
+  833  git remote add origin https://github.com/rbarton124/ConceptWhitening-revision
+  834  git push -u origin master
+  835  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  836  clear
+  837  conda activate CW-old
+  838  clear
+  839  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  840  clera
+  841  clear
+  842  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  843  clear
+  844  ls -a
+  845  clear
+  846  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  847  clera
+  848  clear
+  849  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  850  clear
+  851  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  852  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  853  clear
+  854  conda activate CW-old
+  855  clear
+  856  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  857  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  858  conda activate CW-old
+  859  clear
+  860  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 8 --epochs 10 --batch-size 64     --lr 0.05
+  861  conda activate CW-old
+  862  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  863  clear
+  864  rm runs/ -r
+  865  clear
+  866  ls -a
+  867  clear
+  868  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  869  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  870  conda activate CW-old
+  871  clear
+  872  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  873  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  874  rm runs/ -r
+  875  clear
+  876  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  877  clear
+  878  ls -a
+  879  clear
+  880  conda activate CW-old
+  881  clear
+  882  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  883  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  884  conda activate CW-old
+  885  clear
+  886  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  887  conda activate CW-old
+  888  tensorboard --logdir=runs
+  889  clear 
+  890  cd ConceptWhitening/
+  891  clear
+  892  ls -a
+  893  tensorboard --logdir=runs
+  894  clear
+  895  tensorboard --logdir=runs
+  896  /bin/python3 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.22.2-linux-x64/python_files/shell_exec.py /bin/python3 -m pip install -U tensorboard /tmp/tmp-2927873v4dYgxsaL55t.log
+  897  /bin/python3 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.22.2-linux-x64/python_files/shell_exec.py /bin/python3 -m pip install -U torch-tb-profiler /tmp/tmp-2927873Bx3lIcPe21GS.log
+  898  clear
+  899  tensorboard --logdir=runs
+  900  clear
+  901  cd ConceptWhitening/
+  902  clear
+  903  tensorboard --logdir=runs
+  904  cd ConceptWhitening/
+  905  clear
+  906  tensorboard --logdir=runs
+  907  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  908  clear
+  909  conda activate CW-old
+  910  clear
+  911  clear
+  912  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  913  clear
+  914  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  915  clera
+  916  clear
+  917  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  918  clear
+  919  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  920  clear
+  921  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  922  clear
+  923  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  924  clear
+  925  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  926  clear
+  927  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  928  clear
+  929  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  930  clear
+  931  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  932  clear
+  933  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  934  clear
+  935  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40  --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  936  ls -a
+  937  clear
+  938  tensorboard --logdir=runs
+  939  clear
+  940  tensorboard --logdir=runs
+  941  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  942  conda activate CW-old
+  943  clear
+  944  clear
+  945  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --epochs 10 --concepts "person,bed,airplane"     --prefix CW_TEST_PLACES --ngpu 1 --workers 40 --epochs 10 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  946  tensorboard --logdir=runs
+  947  clear
+  948  cp --help
+  949  clear
+  950  mv runs/CW_RESNET18_EXAMPLE_5_1738125318 run/
+  951  mv runs/CW_RESNET18_EXAMPLE_5_1738354974/ run/
+  952  rm -r runs/
+  953  claer
+  954  clear
+  955  tensorboard --logdir=runs
+  956  clear
+  957  rm runs/CW_RESNET18_EXAMPLE_5_1738354974/ -r
+  958  clear
+  959  clear
+  960  tensorboard --logdir=runs
+  961  clear
+  962  tensorboard --logdir=runs
+  963  clear
+  964  rm runs/CW_TEST_PLACES_5_1738370214/ -r
+  965  rm runs/CW_TEST_PLACES_5_1738370214 -r
+  966  rm runs/CW_TEST_PLACES_5_1738370214 -rf
+  967  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  968  conda activate CW-old
+  969  clear
+  970  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  971  clear
+  972  conda activate CW-old
+  973  clear
+  974  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40  --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  975  clear
+  976  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40  --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  977  conda activate CW-old
+  978  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  979  clear
+  980  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 256 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  981  conda activate CW-old
+  982  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  983  clear
+  984  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  985  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  986  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  987  conda activate CW-old
+  988  clear
+  989  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  990  clear
+  991  rm runs/CW_TEST_PLACES_5_1738370214 -r
+  992  clear
+  993  tensorboard --logdir=runs
+  994  clear
+  995  squeue -u $USER
+  996  git status
+  997  git checkout main
+  998  git checkout master
+  999  clera
+ 1000  clear
+ 1001  tensorboard --logdir=runs
+ 1002  clear
+ 1003  tensorboard --logdir=runs
+ 1004  clear
+ 1005  tensorboard --logdir=runs
+ 1006  clear
+ 1007  clear
+ 1008  tensorboard --logdir=runs
+ 1009  tensorboard --logdir=runs
+ 1010  clear
+ 1011  tensorboard --logdir=runs
+ 1012  conda activate CW-old
+ 1013  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1014  clear
+ 1015  python download_imagenet.py 
+ 1016  wget --no-check-certificate 'https://data.caltech.edu/records/65de6-vp158/files/CUB_200_2011.tgz?download=1' -O CUB_200_2011.tgz
+ 1017  tar -xzf CUB_200_2011.tgz
+ 1018  rm -rf CUB_200_2011
+ 1019  rm attributes.txt 
+ 1020  mv CUB_200_2011.tgz data/CUB/
+ 1021  tar -xzf CUB_200_2011.tgz
+ 1022  clear
+ 1023  ls -a
+ 1024  cd ..
+ 1025  ls -a
+ 1026  cd ..
+ 1027  ls -a
+ 1028  clear
+ 1029  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1030  clear
+ 1031  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1032  clear
+ 1033  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1034  rm data/CUB/concept_data/ -rf
+ 1035  rm data/CUB/main_data/ -rf
+ 1036  clear
+ 1037  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1038  rm data/CUB/concept_data/ -rf
+ 1039  rm data/CUB/main_data/ -rf
+ 1040  clear
+ 1041  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1042  clear
+ 1043  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,nape,crown"
+ 1044  conda activate CW-old
+ 1045  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1046  clear
+ 1047  rm data/CUB/main_data/ -rf
+ 1048  clear
+ 1049  rm data/CUB/concept_data/ -rf
+ 1050  clear
+ 1051  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,left wing,nape,crown"
+ 1052  rm data/CUB/concept_data/ -rf
+ 1053  rm data/CUB/main_data/ -rf
+ 1054  clear
+ 1055  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "has_wing_color::purple,has_bill_length::longer_than_head,has_belly_color::black" --mode "attributes" --draw_or_crop crop
+ 1056  clear
+ 1057  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "has_wing_color::purple,has_bill_length::longer_than_head,has_belly_color::black" --mode "attributes" --draw_or_crop crop
+ 1058  git status
+ 1059  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1060  clear
+ 1061  tensorboard --logdir=runs
+ 1062  clear
+ 1063  cd 
+ 1064  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1065  clear
+ 1066  tensorboard --logdir=runs
+ 1067  tensorboard --logdir=runs
+ 1068  clear
+ 1069  conda activate CW-old
+ 1070  clear
+ 1071  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1072  clear
+ 1073  clear
+ 1074  rm data/CUB/main_data/ -rf
+ 1075  rm data/CUB/concept_data/ -rf
+ 1076  clear
+ 1077  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "has_shape::upright-perching_water-like,has_shape::chicken-like-marsh,has_shape::long-legged-like,has_shape::duck-like,has_shape::owl-like,has_shape::gull-like,has_shape::hummingbird-like,has_shape::pigeon-like,has_shape::tree-clinging-like,has_shape::hawk-like,has_shape::sandpiper-like,has_shape::upland-ground-like,has_shape::swallow-like,has_shape::perching-like" --mode "attributes" --draw_or_crop crop
+ 1078  clear
+ 1079  clear
+ 1080  history > history.txt
