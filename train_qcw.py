@@ -32,6 +32,7 @@ CROP_SIZE       = 224
 RESIZE_SIZE     = 256
 CW_ALIGN_FREQ   = 30   # how often (in mini-batches) we do concept alignment
 PIN_MEMORY      = True
+ALIGNMENT_BATCHES_PER_STEP = 3
 
 ########################
 # Argument Parser
@@ -248,13 +249,16 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         top1.update(prec1, imgs.size(0))
         top5.update(prec5, imgs.size(0))
 
-        # Concept alignment every N batches
+        # Concept alignment every N batches using ALIGNMENT_BATCHES_PER_STEP batches for each alignment step
         if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 0:
-            # Get the concept alignment score
-            concept_acc = run_concept_alignment(model, concept_loaders[0])
-            alignment_score.update(concept_acc)  # Update the alignment score
+            alignment_batch_scores = []
+            for _ in range(ALIGNMENT_BATCHES_PER_STEP):
+                # get the concept alignment score for one batch from the concept loader
+                concept_acc = run_concept_alignment(model, concept_loaders[0])
+                alignment_batch_scores.append(concept_acc)
+            avg_concept_acc = sum(alignment_batch_scores) / len(alignment_batch_scores)
+            alignment_score.update(avg_concept_acc)  # Update the running average with the average from this step
 
-            # Log the alignment score in TensorBoard
             writer.add_scalar("CW/ConceptAlignment", alignment_score.avg, iteration)
 
         # Update the pbar with the new alignment score
