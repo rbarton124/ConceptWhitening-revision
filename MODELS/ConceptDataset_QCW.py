@@ -1,74 +1,62 @@
 import os
 import json
-from PIL import Image
+from PIL import Image, ImageDraw
 import torch
 from torch.utils.data import Dataset
 
 class ConceptDataset(Dataset):
     """
-    A simple dataset that:
-    1) Recursively scans the `root_dir` folder.
-       - `root_dir` might be `concept_train/` or `concept_val/`.
-    2) For each subfolder structure: `root_dir/high_level/sub_concept/...images...`
-       - If `high_level` is in `high_level_filter`, we include those images.
-    3) Looks up bounding box from `bboxes_file` based on the relative path in the folder.
-    4) Builds a subspace_mapping that records sub_concepts per high_level.
-    5) Returns (image_tensor, bounding_box, hl_label).
+    Each sample is a physically cropped or redacted image (or full image)
+    plus the integer label for high-level concept.
     """
-    def __init__(self,
-                 root_dir: str,
-                 bboxes_file: str,
-                 high_level_filter: list[str],
-                 transform=None,
-                 mode: str = 'train'):
+    def __init__(
+        self,
+        root_dir: str,
+        bboxes_file: str,
+        high_level_filter: list[str],
+        transform=None,
+        crop_mode: str = "crop"
+    ):
         """
         Args:
-          root_dir: Path to 'concept_train/' or 'concept_val/'.
-          bboxes_file: Path to 'bboxes.json' with bounding boxes for each image (relative path).
-          high_level_filter: List of high-level concept folder names to include (e.g. ["eye","nape","beak"]).
-          transform: Torchvision transform (augmentations, normalization).
-          mode: "train" or "val" or "test", optional. Could be used if you also store concept_val subdir, etc.
+          root_dir: Path like 'concept_train/' or 'concept_val/'.
+          bboxes_file: Path to 'bboxes.json' with bounding boxes. 
+                       Keys = relative path, value=[x1,y1,x2,y2].
+          high_level_filter: Which high-level concepts to include (e.g., ["eye","beak","nape"]).
+          transform: Torch transforms for augmentation.
+          crop_mode: "crop", "redact", or "none".
+             - "crop": physically crop each image to bounding box, then do transforms
+             - "redact": fill everything outside the bounding box with black (0), keep the image size
+             - "none": do nothing (ignores bounding box)
         """
         super().__init__()
         self.root_dir = root_dir
         self.transform = transform
-        self.mode = mode
+        self.crop_mode = crop_mode.lower().strip()
 
-        # Read bounding boxes
         with open(bboxes_file, 'r') as f:
-            self.bboxes_dict = json.load(f)  # e.g. { "concept_train/eye/has_eye_color::brown/img.jpg": [x1,y1,x2,y2], ... }
+            self.bboxes_dict = json.load(f)
 
-        self.high_level_filter = set([hl.lower() for hl in high_level_filter])  # for easy membership check
+        self.high_level_filter = set([hl.lower() for hl in high_level_filter])
 
-        # We'll store:
-        #   self.samples: a list of (img_path, bounding_box, hl_label)
-        #   self.hl2idx: a dict mapping high_level_name -> int index
-        #   self.subspace_mapping: e.g. { "eye": ["has_eye_color::brown","has_eye_color::red", ... ], "nape": [...], ... }
-
+        # We'll build:
+        #  self.samples -> list of (full_image_path, hl_label)
+        #  self.hl2idx -> dict mapping high_level_name -> int
+        #  self.subspace_mapping -> {hl_name: set_of_subconcepts}
         self.samples = []
         self.hl2idx = {}
-        self.subspace_mapping = {}  # e.g. { "eye": set_of_subconcepts, "nape": set_of_subconcepts, ... }
+        self._subspace_mapping = {}  # store internally
 
         self._scan_directory()
 
-        # Convert subspace sets to sorted lists and build hl2idx
-        sorted_hl = sorted(self.subspace_mapping.keys())
-        for i, hl_name in enumerate(sorted_hl):
+        # finalize subspace sets -> lists, build hl2idx
+        sorted_hls = sorted(self._subspace_mapping.keys())
+        for i, hl_name in enumerate(sorted_hls):
             self.hl2idx[hl_name] = i
-            # turn the set_of_subconcepts into a sorted list
-            self.subspace_mapping[hl_name] = sorted(list(self.subspace_mapping[hl_name]))
-
-        # Now we have a stable mapping from HL-> idx and HL-> sub_concepts
-        # self.samples is ready
+            self._subspace_mapping[hl_name] = sorted(self._subspace_mapping[hl_name])
 
     def _scan_directory(self):
-        """
-        Recursively walk `root_dir`. For each item:
-         `root_dir/high_level/sub_concept/.../image.jpg`
-        If `high_level` in self.high_level_filter, we gather bounding box from self.bboxes_dict
-        and store the sample.
-        We also record sub_concept in subspace_mapping[high_level].
-        """
+        """ Walk root_dir, e.g. concept_train/high_level/sub_concept. """
         for high_level_folder in os.listdir(self.root_dir):
             hl_path = os.path.join(self.root_dir, high_level_folder)
             if not os.path.isdir(hl_path):
@@ -76,62 +64,80 @@ class ConceptDataset(Dataset):
 
             hl_lower = high_level_folder.lower()
             if hl_lower not in self.high_level_filter:
-                # skip
                 continue
 
-            # We keep track of sub_concepts for this HL
-            if hl_lower not in self.subspace_mapping:
-                self.subspace_mapping[hl_lower] = set()
+            if hl_lower not in self._subspace_mapping:
+                self._subspace_mapping[hl_lower] = set()
 
-            # Now, inside high_level_folder are multiple sub_concept folders
-            for sub_concept_folder in os.listdir(hl_path):
-                sub_concept_path = os.path.join(hl_path, sub_concept_folder)
-                if not os.path.isdir(sub_concept_path):
+            # sub_concept dirs
+            for sc_folder in os.listdir(hl_path):
+                sc_path = os.path.join(hl_path, sc_folder)
+                if not os.path.isdir(sc_path):
                     continue
 
-                # record sub_concept name
-                self.subspace_mapping[hl_lower].add(sub_concept_folder)
+                self._subspace_mapping[hl_lower].add(sc_folder)
 
-                # gather images inside sub_concept_folder
-                for root, dirs, files in os.walk(sub_concept_path):
+                for root, dirs, files in os.walk(sc_path):
                     for fname in files:
-                        # We can check extension if we want
                         if not fname.lower().endswith(('.jpg','.jpeg','.png','.bmp')):
                             continue
-
-                        rel_path = os.path.relpath(os.path.join(root, fname), start=os.path.dirname(self.root_dir))
-                        # e.g. "concept_train/eye/has_eye_color::brown/0001_Black_footed_Albatross_0046.jpg"
                         full_path = os.path.join(root, fname)
-
-                        # bounding box from bboxes_dict
+                        rel_path  = os.path.relpath(full_path, start=os.path.dirname(self.root_dir))
+                        # bounding box from bboxes_dict if present
+                        # can skip if none found or default [0,0,0,0]
+                        # We'll store (image_path, bounding_box, hl_name)
                         bbox = self.bboxes_dict.get(rel_path, None)
                         if bbox is None:
-                            # maybe default to [0,0,0,0], or skip
-                            bbox = [0,0,0,0]  # or skip sample
-                            # continue
-
-                        # We'll store (full_image_path, bounding_box, high_level_name)
-                        # We'll assign hl_label later in __getitem__, or build it now
-                        self.samples.append((full_path, bbox, hl_lower))
+                            # user might skip or default
+                            bbox = [0,0,0,0]
+                        
+                        # store
+                        self.samples.append( (full_path, bbox, hl_lower) )
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         img_path, box_coords, hl_name = self.samples[idx]
-        # hl_name => we find the integer label
         hl_label = self.hl2idx[hl_name]
+
         # load image
         img = Image.open(img_path).convert("RGB")
+        x1, y1, x2, y2 = box_coords
 
+        if self.crop_mode == "crop":
+            # physically crop
+            # also be sure to clamp coords
+            x1_cl, y1_cl = max(0, x1), max(0, y1)
+            x2_cl, y2_cl = min(x2, img.width), min(y2, img.height)
+            if x2_cl > x1_cl and y2_cl > y1_cl:
+                img = img.crop((x1_cl, y1_cl, x2_cl, y2_cl))
+            # else if invalid, we skip or let it continue
+        elif self.crop_mode == "redact":
+            # black out everything outside the bounding box
+            # for simplicity, let's define a quick approach:
+            draw = ImageDraw.Draw(img)
+            # top region
+            draw.rectangle([0,0, img.width, y1], fill=(0,0,0))
+            # bottom region
+            draw.rectangle([0, y2, img.width, img.height], fill=(0,0,0))
+            # left region
+            draw.rectangle([0, y1, x1, y2], fill=(0,0,0))
+            # right region
+            draw.rectangle([x2, y1, img.width, y2], fill=(0,0,0))
+            # now the box area is left as is
+        # else "none", do nothing
+
+        # Now apply transforms if any
         if self.transform:
             img = self.transform(img)
 
-        # region => Torch expects e.g. a Tensor with shape (4,) if we want [x1,y1,x2,y2]
-        # We keep them as floats
-        region_tensor = torch.tensor(box_coords, dtype=torch.float32)
+        # Return a normal (image_tensor, hl_label)
+        return img, hl_label
 
-        return img, region_tensor, hl_label
+    @property
+    def subspace_mapping(self):
+        return self._subspace_mapping
 
     def get_num_high_level(self):
         return len(self.hl2idx)
@@ -141,25 +147,8 @@ class ConceptDataset(Dataset):
 
     def __repr__(self):
         return (f"ConceptDataset(\n"
-                f"  root_dir={self.root_dir},\n"
-                f"  bboxes=<{len(self.bboxes_dict)} entries>,\n"
-                f"  high_level_filter={self.high_level_filter},\n"
-                f"  samples={len(self.samples)}\n)")
-
-    @property
-    def subspace_mapping(self):
-        """
-        We define a property so external code can get the subspace dictionary easily.
-        In this example, subspace_mapping is e.g.
-           {
-             "eye": ["has_eye_color::brown","has_eye_color::red", ...],
-             "nape": [...],
-             ...
-           }
-        Then the training script decides how to turn sub_concepts => dimension indices if it wants to.
-        """
-        return self._subspace_mapping
-
-    @subspace_mapping.setter
-    def subspace_mapping(self, val):
-        self._subspace_mapping = val
+                f" root_dir={self.root_dir},\n"
+                f" bboxes=<{len(self.bboxes_dict)} entries>,\n"
+                f" high_level_filter={self.high_level_filter},\n"
+                f" samples={len(self.samples)},\n"
+                f" mode={self.crop_mode}\n)")
