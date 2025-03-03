@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import argparse
 import os
 import time
@@ -19,13 +18,9 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from PIL import ImageFile
 
-# Ensure truncated images are loadable
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+ImageFile.LOAD_TRUNCATED_IMAGES = True # ensure truncated images are loadable JIC
 
-# Revised QCW model that no longer uses bounding-box logic
 from MODELS.model_resnet_qcw import build_resnet_qcw, NUM_CLASSES, get_last_qcw_layer
-
-# Revised dataset that physically crops/redacts images; returns (image, hl_label)
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
 ########################
@@ -42,73 +37,31 @@ PIN_MEMORY      = True
 # Argument Parser
 ########################
 parser = argparse.ArgumentParser(description="Train Quantized Concept Whitening (QCW) - Revised")
-
-# Main dataset
-parser.add_argument("--data_dir", required=True,
-    help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")
-
-# Concept dataset
-parser.add_argument("--concept_dir", required=True,
-    help="Path to concept dataset with concept_train/, concept_val/ (optional), and bboxes.json.")
-parser.add_argument("--bboxes", default="",
-    help="Path to bboxes.json if not in concept_dir/bboxes.json")
-
-# Which high-level concepts
-parser.add_argument("--concepts", required=True,
-    help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
-
-# Logging prefix
-parser.add_argument("--prefix", required=True,
-    help="Prefix for logging & checkpoint saving")
-
-# Which BN layers to replace with CW
-parser.add_argument("--whitened_layers", default="5",
-    help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
-
-# Model depth & activation mode
-parser.add_argument("--depth", type=int, default=18,
-    help="ResNet depth (18 or 50).")
-parser.add_argument("--act_mode", default="pool_max",
-    help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
-
+parser.add_argument("--data_dir", required=True, help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")
+parser.add_argument("--concept_dir", required=True, help="Path to concept dataset with concept_train/, concept_val/ (optional), and bboxes.json.")
+parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
+parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
+parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
+parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
+parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
+parser.add_argument("--act_mode", default="pool_max", help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
 # Training hyperparams
-parser.add_argument("--epochs", type=int, default=100,
-    help="Number of training epochs.")
-parser.add_argument("--batch_size", type=int, default=64,
-    help="Mini-batch size.")
-parser.add_argument("--lr", type=float, default=0.1,
-    help="Initial learning rate.")
-parser.add_argument("--momentum", type=float, default=0.9,
-    help="Momentum for SGD.")
-parser.add_argument("--weight_decay", type=float, default=1e-4,
-    help="Weight decay (L2 reg).")
-
+parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
+parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
+parser.add_argument("--lr", type=float, default=0.1, help="Initial learning rate.")
+parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
+parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
 # Checkpoint
-parser.add_argument("--resume", default="", type=str,
-    help="Path to checkpoint to resume from.")
-parser.add_argument("--only_load_weights", action="store_true",
-    help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
+parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
+parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
 
-# Reproducibility
-parser.add_argument("--seed", type=int, default=1234,
-    help="Random seed.")
-parser.add_argument("--workers", type=int, default=4,
-    help="Number of data loading workers.")
-
+parser.add_argument("--seed", type=int, default=1234, help="Random seed.")
+parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 # Feature toggles
-parser.add_argument("--disable_subspaces", action="store_true",
-    help="Disable subspace partitioning => one axis per concept.")
-parser.add_argument("--use_free", action="store_true",
-    help="Enable free unlabeled concept axes if the QCW layer supports it.")
-
-# Not used in the dataset approach anymore, but left for code compatibility
-parser.add_argument("--use_redaction", action="store_true",
-    help="(Deprecated) was used for bounding-box redaction in the model, can ignore in revised approach.")
-
-# Possibly used for weighting concept alignment if you implement it
-parser.add_argument("--cw_loss_weight", type=float, default=1.0,
-    help="Weight for QCW loss in alignment, if integrated into your alignment code.")
-
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.")
+parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.")
+# Still need to add this logic in!
+parser.add_argument("--cw_loss_weight", type=float, default=1.0, help="Weight for QCW loss in alignment, if integrated alignment code.")
 
 args = parser.parse_args()
 
@@ -188,10 +141,7 @@ def build_concept_loaders(args):
     # Example: "wing,beak,tail" => ["wing","beak","tail"]
     hl_list = [x.strip() for x in args.concepts.split(",")]
 
-    # We'll define some argument in code for how we want to handle bounding boxes:
-    # e.g. "crop" or "redact" or "none"
-    # For demonstration, let's do "crop". If you want to pass as arg, do so as well.
-    crop_mode = "crop"
+    crop_mode = "crop" # redaction mode for dataset, clean this up later
 
     concept_dataset = ConceptDataset(
         root_dir=concept_root,

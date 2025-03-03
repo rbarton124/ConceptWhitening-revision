@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 from collections import OrderedDict
-from MODELS.iterative_normalization import IterNormRotation  # QCW layer implementation
+from MODELS.iterative_normalization import IterNormRotation
 
 NUM_CLASSES = 200
 
@@ -64,7 +64,7 @@ class ResNetQCW(nn.Module):
                     block.bn1 = qcw
                     self.cw_layers.append(qcw)
         
-        # Load pretrained weights if provided.
+        # Load pretrained weights if provided, this logic needs to be fleshed out an unified with the train resume logic
         if pretrained_model and os.path.isfile(pretrained_model):
             self.load_model(pretrained_model, vanilla_pretrain)
     
