@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Unified Script to Generate Main and Concept Datasets from CUB,
 supporting both parts and attributes as concepts, and allowing
