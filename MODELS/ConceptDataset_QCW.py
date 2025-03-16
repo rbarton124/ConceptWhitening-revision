@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 class ConceptDataset(Dataset):
     """
     Each sample is a physically cropped or redacted image (or full image)
-    plus the integer label for high-level concept.
+    plus the integer label for subconcept.
     """
     def __init__(
         self,
@@ -40,20 +40,31 @@ class ConceptDataset(Dataset):
         self.high_level_filter = set([hl.lower() for hl in high_level_filter])
 
         # We'll build:
-        #  self.samples -> list of (full_image_path, hl_label)
+        #  self.samples -> list of (full_image_path, bbox, hl_name, sc_name)
         #  self.hl2idx -> dict mapping high_level_name -> int
-        #  self.subspace_mapping -> {hl_name: set_of_subconcepts}
+        #  self.sc2idx -> dict mapping subconcept_name -> int
+        #  self.subspace_mapping -> {hl_name: list_of_subconcept_indices}
         self.samples = []
         self.hl2idx = {}
+        self.sc2idx = {}
         self._subspace_mapping = {}  # store internally
 
         self._scan_directory()
 
-        # finalize subspace sets -> lists, build hl2idx
+        # finalize subspace mappings and build indices
         sorted_hls = sorted(self._subspace_mapping.keys())
         for i, hl_name in enumerate(sorted_hls):
             self.hl2idx[hl_name] = i
-            self._subspace_mapping[hl_name] = sorted(self._subspace_mapping[hl_name])
+            # Convert subconcept sets to sorted lists and map them to indices
+            sorted_subconcepts = sorted(self._subspace_mapping[hl_name])
+            subconcept_indices = []
+            
+            for sc in sorted_subconcepts:
+                if sc not in self.sc2idx:
+                    self.sc2idx[sc] = len(self.sc2idx)
+                subconcept_indices.append(self.sc2idx[sc])
+                
+            self._subspace_mapping[hl_name] = subconcept_indices
 
     def _scan_directory(self):
         """ Walk root_dir, e.g. concept_train/high_level/sub_concept. """
@@ -85,21 +96,22 @@ class ConceptDataset(Dataset):
                         rel_path  = os.path.relpath(full_path, start=os.path.dirname(self.root_dir))
                         # bounding box from bboxes_dict if present
                         # can skip if none found or default [0,0,0,0]
-                        # We'll store (image_path, bounding_box, hl_name)
+                        # We'll store (image_path, bounding_box, hl_name, sc_folder)
                         bbox = self.bboxes_dict.get(rel_path, None)
                         if bbox is None:
                             # user might skip or default
                             bbox = [0,0,0,0]
                         
-                        # store
-                        self.samples.append( (full_path, bbox, hl_lower) )
+                        # store sample with both high-level concept and subconcept information
+                        self.samples.append((full_path, bbox, hl_lower, sc_folder))
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img_path, box_coords, hl_name = self.samples[idx]
+        img_path, box_coords, hl_name, sc_name = self.samples[idx]
         hl_label = self.hl2idx[hl_name]
+        sc_label = self.sc2idx[sc_name]
 
         # load image
         img = Image.open(img_path).convert("RGB")
@@ -132,18 +144,34 @@ class ConceptDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        # Return a normal (image_tensor, hl_label)
-        return img, hl_label
+        # Return image tensor, subconcept label, and high-level concept label
+        # This lets us align by subconcept while still tracking high-level concept grouping
+        return img, sc_label, hl_label
 
     @property
     def subspace_mapping(self):
         return self._subspace_mapping
+    
+    def get_num_subconcepts(self):
+        return len(self.sc2idx)
+    
+    def get_subconcept_names(self):
+        return sorted(self.sc2idx.keys(), key=lambda x: self.sc2idx[x])
 
     def get_num_high_level(self):
         return len(self.hl2idx)
 
     def get_hl_names(self):
         return sorted(self.hl2idx.keys(), key=lambda x: self.hl2idx[x])
+        
+    def get_subconcept_to_hl_mapping(self):
+        """Returns a mapping from subconcept index to high-level concept index"""
+        sc_to_hl = {}
+        for hl_name, sc_indices in self._subspace_mapping.items():
+            hl_idx = self.hl2idx[hl_name]
+            for sc_idx in sc_indices:
+                sc_to_hl[sc_idx] = hl_idx
+        return sc_to_hl
 
     def __repr__(self):
         return (f"ConceptDataset(\n"
@@ -151,4 +179,5 @@ class ConceptDataset(Dataset):
                 f" bboxes=<{len(self.bboxes_dict)} entries>,\n"
                 f" high_level_filter={self.high_level_filter},\n"
                 f" samples={len(self.samples)},\n"
+                f" subconcepts={len(self.sc2idx)},\n"
                 f" mode={self.crop_mode}\n)")

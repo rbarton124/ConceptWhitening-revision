@@ -329,6 +329,7 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             alignment_batch_scores = []
             for _ in range(ALIGNMENT_BATCHES_PER_STEP):
                 # get the concept alignment score for one batch from the concept loader
+                # We now use subconcept labels for proper alignment
                 concept_acc = run_concept_alignment(model, concept_loaders[0])
                 alignment_batch_scores.append(concept_acc)
             avg_concept_acc = sum(alignment_batch_scores) / len(alignment_batch_scores)
@@ -347,9 +348,11 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
 def run_concept_alignment(model, concept_loader):
     """
     Evaluate alignment: 
-      - For each concept sample, set the QCW mode=concept_idx
+      - For each concept sample, set the QCW mode for high-level concept
+      - Set the subconcept_idx for proper subconcept alignment
       - Forward pass
       - Hook final QCW layer => measure alignment by picking the axis with highest activation
+      - Verify each subconcept aligns with its own distinct axis
     """
     model.eval()
     from types import SimpleNamespace
@@ -364,37 +367,43 @@ def run_concept_alignment(model, concept_loader):
     correct=0
     total=0
     with torch.no_grad():
-        for imgs, hl_label in concept_loader:
-            # Suppose dataset returns hl_label as shape [B].
+        for imgs, sc_label, hl_label in concept_loader:
+            # Dataset now returns sc_label and hl_label as shape [B]
             imgs = imgs.cuda()
+            sc_label = sc_label.cuda()
             hl_label = hl_label.cuda()
 
-            # We'll just pick the first label or loop if you prefer
-            # This is a simplification (old approach).
+            # Set the high-level concept mode for overall structure
             model.module.change_mode(hl_label[0].item())
+            
+            # Set subconcept_idx for precise alignment - loop through batch for proper alignment
+            for i in range(len(sc_label)):
+                # Set the subconcept index for this specific sample
+                last_qcw.set_subconcept(sc_label[i].item())
+                
+                # Process a single image
+                out = model(imgs[i:i+1])
+                
+                if len(hook_storage.outputs) == 0:
+                    continue
 
-            out = model(imgs)
-            if len(hook_storage.outputs)==0:
-                continue
-
-            featmap = hook_storage.outputs[0]  # shape [B, C, H, W]
-            B, C, H, W = featmap.shape
-            feat_avg = featmap.mean(dim=(2,3))  # shape [B, C]
-            pred_axis = feat_avg.argmax(dim=1)
-            correct += (pred_axis == hl_label).sum().item()
-            total += B
-
-            hook_storage.outputs.clear()
+                featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
+                feat_avg = featmap.mean(dim=(2,3))  # shape [1, C]
+                pred_axis = feat_avg.argmax(dim=1)[0]  # get the predicted axis
+                
+                # Compare with subconcept label for correct axis alignment
+                correct += (pred_axis == sc_label[i]).item()
+                total += 1
+                
+                hook_storage.outputs.clear()
 
     handle.remove()
     model.module.update_rotation_matrix()
     model.module.change_mode(-1)
     model.train()
-
-    if total > 0:
-        return 100.0 * correct / total
-    else:
-        return 0.0
+    
+    # Return the accuracy of subconcept alignment
+    return (correct / max(1, total)) * 100.0 if total > 0 else 0.0
 
 def validate(loader, model, epoch, writer, mode="Val"):
     model.eval()
