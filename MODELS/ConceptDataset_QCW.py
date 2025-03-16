@@ -144,9 +144,9 @@ class ConceptDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        # Return image tensor, subconcept label, and high-level concept label
-        # This lets us align by subconcept while still tracking high-level concept grouping
-        return img, sc_label, hl_label
+        # For the subconcept-specific loaders in the concept alignment process, we only need
+        # to return the subconcept label, since each loader is dedicated to a specific subconcept
+        return img, sc_label
 
     @property
     def subspace_mapping(self):

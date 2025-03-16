@@ -124,7 +124,10 @@ train_loader, val_loader, test_loader = build_main_loaders(args)
 ########################
 def build_concept_loaders(args):
     """
-    Build a single concept loader for concept_train.
+    Build concept loaders for concept_train:
+    1. A main loader with all subconcepts (for general use)
+    2. Individual loaders for each subconcept (for proper alignment)
+    
     The revised ConceptDataset physically crops or redacts images, so the model sees normal images.
     """
     concept_root = os.path.join(args.concept_dir, "concept_train")
@@ -144,6 +147,7 @@ def build_concept_loaders(args):
 
     crop_mode = "crop" # redaction mode for dataset, clean this up later
 
+    # Main concept dataset with all subconcepts
     concept_dataset = ConceptDataset(
         root_dir=concept_root,
         bboxes_file=args.bboxes,
@@ -151,15 +155,49 @@ def build_concept_loaders(args):
         transform=concept_transform,
         crop_mode=crop_mode
     )
-    concept_loader = DataLoader(
+    
+    # Main loader with all subconcepts (shuffled)
+    main_concept_loader = DataLoader(
         concept_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.workers,
         pin_memory=PIN_MEMORY
     )
-
-    return [concept_loader], concept_dataset
+    
+    # Now create per-subconcept loaders to ensure each subconcept is represented
+    # during concept alignment (similar to old QCW implementation)
+    subconcept_loaders = []
+    
+    # Group samples by subconcept
+    subconcept_samples = {}
+    for idx, (_, _, hl_name, sc_name) in enumerate(concept_dataset.samples):
+        # Get the subconcept label from the subconcept name
+        sc_label = concept_dataset.sc2idx[sc_name]
+        
+        if sc_label not in subconcept_samples:
+            subconcept_samples[sc_label] = []
+        subconcept_samples[sc_label].append(idx)
+    
+    # Create a filtered dataset for each subconcept
+    for sc_label, indices in subconcept_samples.items():
+        # Use PyTorch's Subset to create a filtered dataset
+        sc_dataset = torch.utils.data.Subset(concept_dataset, indices)
+        
+        # Create a loader for this subconcept
+        sc_loader = DataLoader(
+            sc_dataset,
+            batch_size=min(args.batch_size, len(indices)),  # Handle small subconcepts
+            shuffle=True,
+            num_workers=args.workers,
+            pin_memory=PIN_MEMORY
+        )
+        subconcept_loaders.append((sc_label, sc_loader))
+    
+    print(f"Created {len(subconcept_loaders)} subconcept-specific loaders")
+    
+    # Return both the main loader and subconcept-specific loaders
+    return [main_concept_loader] + [loader for _, loader in subconcept_loaders], concept_dataset
 
 concept_loaders, concept_ds = build_concept_loaders(args)
 
@@ -167,6 +205,30 @@ print(f"[Data] #Main Train: {len(train_loader.dataset)}")
 print(f"[Data] #Val:        {len(val_loader.dataset)}")
 print(f"[Data] #Test:       {len(test_loader.dataset)}")
 print(f"[Data] #Concept:    {len(concept_loaders[0].dataset)}")
+print(f"[Data] #Subconcept Loaders: {len(concept_loaders) - 1}")
+
+# Print detailed information about the concept dataset
+print("\n===== CONCEPT DATASET DETAILS =====")
+print(f"Total number of samples: {len(concept_ds.samples)}")
+print(f"Total number of subconcepts: {concept_ds.get_num_subconcepts()}")
+print(f"Total number of high-level concepts: {concept_ds.get_num_high_level()}")
+
+# Print subconcept names and their indices
+print("\nSubconcept names and indices:")
+for sc_name in concept_ds.get_subconcept_names():
+    sc_idx = concept_ds.sc2idx[sc_name]
+    print(f"  [{sc_idx}] {sc_name}")
+
+# Print high-level concept names and their subspaces
+print("\nHigh-level concepts and their subconcept indices:")
+for hl_name in concept_ds.get_hl_names():
+    subspace = concept_ds.subspace_mapping.get(hl_name, [])
+    print(f"  {hl_name}: {subspace}")
+
+# Print information about each subconcept-specific loader
+print("\nSubconcept-specific loaders:")
+for i, loader in enumerate(concept_loaders[1:], 1):
+    print(f"  Loader {i}: {len(loader.dataset)} samples")
 
 ########################
 # Build QCW Model
@@ -324,18 +386,24 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         top1.update(prec1, imgs.size(0))
         top5.update(prec5, imgs.size(0))
 
-        # Concept alignment every N batches using ALIGNMENT_BATCHES_PER_STEP batches for each alignment step
-        if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 0:
-            alignment_batch_scores = []
-            for _ in range(ALIGNMENT_BATCHES_PER_STEP):
-                # get the concept alignment score for one batch from the concept loader
-                # We now use subconcept labels for proper alignment
-                concept_acc = run_concept_alignment(model, concept_loaders[0])
-                alignment_batch_scores.append(concept_acc)
-            avg_concept_acc = sum(alignment_batch_scores) / len(alignment_batch_scores)
-            alignment_score.update(avg_concept_acc)  # Update the running average with the average from this step
-
-            writer.add_scalar("CW/ConceptAlignment", alignment_score.avg, iteration)
+        # Concept alignment every N batches using subconcept-specific loaders
+        if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
+            # Skip the first loader (which is the main loader with all concepts)
+            # and use subconcept-specific loaders (starting from index 1)
+            alignment_metrics = run_concept_alignment_all(model, concept_loaders[1:], concept_ds.subspace_mapping)
+            
+            # Update metrics
+            global_top1 = alignment_metrics['global_top1']
+            subspace_top1 = alignment_metrics['subspace_top1']
+            global_top5 = alignment_metrics['global_top5']
+            
+            # Use the subspace_top1 as the main alignment score for backward compatibility
+            alignment_score.update(subspace_top1)
+            
+            # Log all metrics
+            writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
+            writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
+            writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
 
         # Update the pbar with the new alignment score
         pbar.set_postfix({"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", 
@@ -345,14 +413,146 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
+def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping):
+    """
+    Run alignment checks for all subconcept loaders and calculate multiple metrics:
+    
+    Args:
+        model: The QCW model
+        subconcept_loaders: List of subconcept-specific dataloaders
+        subspace_mapping: Dict mapping high-level concepts to lists of subconcept indices
+        
+    Returns:
+        Dict with alignment metrics
+    """
+    model.eval()
+    # Create inverted mapping from subconcept index to high-level concept
+    sc_to_hl = {}
+    for hl, sc_indices in subspace_mapping.items():
+        for sc_idx in sc_indices:
+            sc_to_hl[sc_idx] = hl
+    
+    from types import SimpleNamespace
+    hook_storage = SimpleNamespace(outputs=[])
+
+    def forward_hook(module, input, output):
+        hook_storage.outputs.append(output)
+
+    last_qcw = get_last_qcw_layer(model.module)
+    handle = last_qcw.register_forward_hook(forward_hook)
+    
+    # Initialize counters for our metrics
+    global_top1_correct = 0
+    subspace_top1_correct = 0
+    global_top5_correct = 0
+    total_samples = 0
+    
+    with torch.no_grad():
+        # For each subconcept-specific loader
+        for subconcept_loader in subconcept_loaders:
+            try:
+                # Get a batch from this loader with error handling
+                batch_iter = iter(subconcept_loader)
+                batch_data = next(batch_iter, None)
+                
+                if batch_data is None or len(batch_data) < 2:
+                    print(f"Warning: Empty or invalid batch from subconcept loader")
+                    continue
+                    
+                imgs, sc_labels = batch_data
+                
+                if not len(imgs):
+                    continue
+                    
+                # All images in this loader have the same subconcept
+                sc_label = sc_labels[0].item()
+                
+                # Get the high-level concept this subconcept belongs to
+                hl = sc_to_hl.get(sc_label, None)
+                if hl is None:
+                    # Skip if we don't have subspace mapping for this subconcept
+                    print(f"Warning: No high-level concept found for subconcept {sc_label}")
+                    continue
+            except Exception as e:
+                print(f"Error processing subconcept loader: {str(e)}")
+                continue
+            
+            # Get the subspace (all subconcepts under this high-level concept)
+            subspace = subspace_mapping.get(hl, [])
+            
+            # Set mode to this subconcept's index for alignment
+            model.module.change_mode(sc_label)
+            
+            # Process images
+            imgs = imgs.cuda()
+            
+            # Process each image
+            for i in range(len(imgs)):
+                # Set the specific subconcept index
+                last_qcw.set_subconcept(sc_label)
+                
+                # Forward pass
+                out = model(imgs[i:i+1])
+                
+                if len(hook_storage.outputs) == 0:
+                    continue
+                
+                # Extract activations
+                featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
+                feat_avg = featmap.mean(dim=(2,3)).squeeze()  # shape [C]
+                
+                # Global Top-1: Is the highest activated axis the correct subconcept?
+                global_pred = feat_avg.argmax().item()
+                if global_pred == sc_label:
+                    global_top1_correct += 1
+                
+                # Global Top-5: Is the correct subconcept among the top 5 activated axes?
+                top5_values, top5_indices = feat_avg.topk(5)
+                if sc_label in top5_indices:
+                    global_top5_correct += 1
+                
+                # Subspace Top-1: Within the subspace, is the highest activated axis the correct subconcept?
+                if len(subspace) > 0:
+                    # Extract activations only for axes in this subspace
+                    subspace_activations = feat_avg[subspace]
+                    subspace_pred_local = subspace_activations.argmax().item()
+                    # Convert local index to global axis index
+                    predicted_global_axis = subspace[subspace_pred_local]
+                    if predicted_global_axis == sc_label:
+                        subspace_top1_correct += 1
+                
+                total_samples += 1
+                hook_storage.outputs.clear()
+    
+    # Cleanup
+    handle.remove()
+    model.module.update_rotation_matrix()
+    model.module.change_mode(-1)
+    model.train()
+    
+    # Calculate percentages
+    if total_samples > 0:
+        global_top1_pct = 100.0 * global_top1_correct / total_samples
+        subspace_top1_pct = 100.0 * subspace_top1_correct / total_samples
+        global_top5_pct = 100.0 * global_top5_correct / total_samples
+    else:
+        global_top1_pct = 0.0
+        subspace_top1_pct = 0.0
+        global_top5_pct = 0.0
+    
+    return {
+        'global_top1': global_top1_pct,
+        'subspace_top1': subspace_top1_pct,
+        'global_top5': global_top5_pct
+    }
+
 def run_concept_alignment(model, concept_loader):
     """
-    Evaluate alignment: 
-      - For each concept sample, set the QCW mode for high-level concept
-      - Set the subconcept_idx for proper subconcept alignment
-      - Forward pass
-      - Hook final QCW layer => measure alignment by picking the axis with highest activation
-      - Verify each subconcept aligns with its own distinct axis
+    Legacy alignment function for single-loader compatibility.
+    Uses Global Top-1 accuracy (correctly predicting a subconcept as the highest activated axis).
+    
+    This function is maintained for backward compatibility, but the run_concept_alignment_all
+    function should be preferred for more comprehensive alignment metrics.
     """
     model.eval()
     from types import SimpleNamespace
@@ -364,22 +564,22 @@ def run_concept_alignment(model, concept_loader):
     last_qcw = get_last_qcw_layer(model.module)
     handle = last_qcw.register_forward_hook(forward_hook)
 
-    correct=0
-    total=0
+    correct = 0
+    total = 0
     with torch.no_grad():
-        for imgs, sc_label, hl_label in concept_loader:
-            # Dataset now returns sc_label and hl_label as shape [B]
+        for imgs, sc_labels in concept_loader:
+            # Dataset now returns sc_label (subconcept index)
             imgs = imgs.cuda()
-            sc_label = sc_label.cuda()
-            hl_label = hl_label.cuda()
+            sc_labels = sc_labels.cuda()
 
-            # Set the high-level concept mode for overall structure
-            model.module.change_mode(hl_label[0].item())
-            
             # Set subconcept_idx for precise alignment - loop through batch for proper alignment
-            for i in range(len(sc_label)):
-                # Set the subconcept index for this specific sample
-                last_qcw.set_subconcept(sc_label[i].item())
+            for i in range(len(sc_labels)):
+                # Get the subconcept index for this image
+                sc_label = sc_labels[i].item()
+                
+                # Set the mode to this subconcept
+                model.module.change_mode(sc_label)
+                last_qcw.set_subconcept(sc_label)
                 
                 # Process a single image
                 out = model(imgs[i:i+1])
@@ -392,7 +592,7 @@ def run_concept_alignment(model, concept_loader):
                 pred_axis = feat_avg.argmax(dim=1)[0]  # get the predicted axis
                 
                 # Compare with subconcept label for correct axis alignment
-                correct += (pred_axis == sc_label[i]).item()
+                correct += (pred_axis == sc_label).item()
                 total += 1
                 
                 hook_storage.outputs.clear()

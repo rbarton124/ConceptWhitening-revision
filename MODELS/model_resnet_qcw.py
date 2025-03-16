@@ -116,9 +116,17 @@ def build_resnet_qcw(num_classes=NUM_CLASSES, depth=18, whitened_layers=None, ac
                       use_free=use_free, pretrained_model=pretrained_model, vanilla_pretrain=vanilla_pretrain)
     return model
 
-def get_last_qcw_layer(model):
-    # Returns the last QCW layer for hooking during concept alignment.
+def get_last_qcw_layer(model):    
     if hasattr(model, "cw_layers") and len(model.cw_layers) > 0:
         return model.cw_layers[-1]
-    else:
+    
+    # if that fails search through all modules
+    for module in reversed(list(model.modules())):
+        if isinstance(module, IterNormRotation):
+            return module
+            
+    # if all else fails, try the legacy approach
+    try:
         return model.backbone.layer4[-1].bn1
+    except (AttributeError, IndexError):
+        raise ValueError("No IterNormRotation (QCW) layer found in the model")
