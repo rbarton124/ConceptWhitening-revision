@@ -30,9 +30,9 @@ LR_DECAY_EPOCH  = 30
 LR_DECAY_FACTOR = 0.1
 CROP_SIZE       = 224
 RESIZE_SIZE     = 256
-CW_ALIGN_FREQ   = 30   # how often (in mini-batches) we do concept alignment
+CW_ALIGN_FREQ   = 20   # how often (in mini-batches) we do concept alignment
 PIN_MEMORY      = True
-ALIGNMENT_BATCHES_PER_STEP = 3
+ALIGNMENT_BATCHES_PER_STEP = 2
 
 ########################
 # Argument Parser
@@ -193,18 +193,93 @@ model = build_resnet_qcw(
 # Resume Checkpoint
 ########################
 def maybe_resume_checkpoint(model, optimizer, args):
+    """
+    Attempt to resume from a checkpoint (either a standard ResNet-18
+    or our custom QCW checkpoint). We'll rename layers if needed,
+    skip any missing or extra keys, and optionally load optimizer state.
+    Returns: (start_epoch, best_prec)
+    """
     start_epoch, best_prec = 0, 0.0
-    if args.resume and os.path.isfile(args.resume):
-        print(f"[Checkpoint] Resuming from {args.resume}")
-        ckpt = torch.load(args.resume, map_location="cpu")
-        sd = ckpt.get("state_dict", ckpt)
-        model.load_state_dict(sd, strict=False)
+    if not args.resume or not os.path.isfile(args.resume):
+        return start_epoch, best_prec
+
+    print(f"[Checkpoint] Resuming from {args.resume}")
+    ckpt = torch.load(args.resume, map_location="cpu")
+
+    # If the checkpoint is from our QCW code, we typically have a dictionary. If not, it might be a raw state_dict (standard torchvision model)
+    raw_sd = ckpt.get("state_dict", ckpt)  # either the 'state_dict' sub-dict or the entire ckpt
+
+    # 3) We'll build a new dictionary that maps the checkpoint keys to our model's keys
+    #    Also if the checkpoint has "module.xxx", remove the "module." prefix.
+    #    We'll skip keys that obviously belong to BN layers if we've replaced them with IterNorm
+    #    or we skip keys that reference "running_rot" or "sum_G" if the model doesn't have them, etc.
+
+    model_sd = model.state_dict()  # the current model’s parameter dict
+    renamed_sd = {}
+
+    def rename_key(old_key):
+        # Remove any leading "module." if it exists
+        if old_key.startswith("module."):
+            old_key = old_key[len("module."):]
+        # If old_key doesn't start with "backbone." and the model expects "backbone.*",
+        # we can prepend "backbone." for main layers.  But only if that matches model keys
+        if not old_key.startswith("backbone.") and ("backbone."+old_key in model_sd):
+            return "backbone."+old_key
+        # Similarly, if we have "fc.weight" in standard resnet, we want "backbone.fc.weight" in QCW
+        # However, for resnet-18 standard checkpoint, "fc.weight" is the final linear layer
+        if old_key.startswith("fc.") and ("backbone.fc"+old_key[2:] in model_sd):
+            return "backbone."+old_key
+        # We rely on partial load + strict=False logic to skip mismatched key.
+        return old_key  # fallback if no special rename
+    
+    matched_keys = []
+    skipped_keys = []
+    
+    for ckpt_k, ckpt_v in raw_sd.items():
+        new_k = rename_key(ckpt_k)
+        # if new_k is in the model's dict and shape matches, we keep it
+        if new_k in model_sd:
+            if ckpt_v.shape == model_sd[new_k].shape:
+                # good shape => we keep it
+                renamed_sd[new_k] = ckpt_v
+                matched_keys.append(f"{ckpt_k} -> {new_k}")
+            else:
+                skipped_keys.append(f"{ckpt_k}: shape {ckpt_v.shape} != {model_sd[new_k].shape}")
+        else:
+            skipped_keys.append(f"{ckpt_k}: no match found in model")
+    
+    print("Loading model...")
+    result = model.load_state_dict(renamed_sd, strict=False)
+    print("Missing keys:", result.missing_keys)
+    print("Unexpected keys:", result.unexpected_keys)
+
+    print("[Checkpoint] Matched keys:")
+    for mk in matched_keys:
+        print("   ", mk)
+    print("[Checkpoint] Skipped keys from checkpoint:")
+    for sk in skipped_keys:
+        print("   ", sk)
+
+    # possibly recover epoch/best_prec/optimizer if it’s a QCW style checkpoint
+    if isinstance(ckpt, dict):
         if not args.only_load_weights:
             start_epoch = ckpt.get("epoch", 0)
-            best_prec   = ckpt.get("best_prec1", 0.0)
+            best_prec = ckpt.get("best_prec1", 0.0)
             if "optimizer" in ckpt:
-                optimizer.load_state_dict(ckpt["optimizer"])
+                opt_sd = ckpt["optimizer"]
+                try:
+                    optimizer.load_state_dict(opt_sd)
+                    # Ensure param states are on correct device
+                    for param in optimizer.state.values():
+                        if isinstance(param, dict) and "momentum_buffer" in param:
+                            buf = param["momentum_buffer"]
+                            if buf is not None and buf.device != torch.device("cuda"):
+                                param["momentum_buffer"] = buf.cuda()
+                except Exception as e:
+                    print(f"[Warning] Could not load optimizer state: {e}")
+
         print(f"[Checkpoint] Resumed epoch={start_epoch}, best_prec={best_prec:.2f}")
+
     return start_epoch, best_prec
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum,
