@@ -18,6 +18,8 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from PIL import ImageFile
 
+from types import SimpleNamespace
+
 ImageFile.LOAD_TRUNCATED_IMAGES = True # ensure truncated images are loadable JIC
 
 from MODELS.model_resnet_qcw import build_resnet_qcw, NUM_CLASSES, get_last_qcw_layer
@@ -413,124 +415,127 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping):
+def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping, batch_per_concept=1):
     """
-    Run alignment checks for all subconcept loaders and calculate multiple metrics:
+    Aligns concepts by accumulating gradients and calculates multiple alignment metrics:
+    
+    1. For each subconcept-specific loader, get a batch of images
+    2. Set model mode to the subconcept's index and process the batch
+    3. Calculate and return alignment metrics
+    4. After all subconcepts, update the rotation matrix once
+
+    3 and 4 should probably be switched
     
     Args:
         model: The QCW model
         subconcept_loaders: List of subconcept-specific dataloaders
         subspace_mapping: Dict mapping high-level concepts to lists of subconcept indices
+        batch_per_concept: Number of batches to process per subconcept (default: 1)
         
     Returns:
-        Dict with alignment metrics
+        Dict with alignment metrics (global_top1, subspace_top1, global_top5)
     """
     model.eval()
+    
     # Create inverted mapping from subconcept index to high-level concept
+    # this should be a function in concept datasets
     sc_to_hl = {}
     for hl, sc_indices in subspace_mapping.items():
         for sc_idx in sc_indices:
             sc_to_hl[sc_idx] = hl
-    
-    from types import SimpleNamespace
-    hook_storage = SimpleNamespace(outputs=[])
 
+    hook_storage = SimpleNamespace(outputs=[])
+    
     def forward_hook(module, input, output):
         hook_storage.outputs.append(output)
-
+    
     last_qcw = get_last_qcw_layer(model.module)
     handle = last_qcw.register_forward_hook(forward_hook)
     
-    # Initialize counters for our metrics
     global_top1_correct = 0
     subspace_top1_correct = 0
     global_top5_correct = 0
     total_samples = 0
     
     with torch.no_grad():
-        # For each subconcept-specific loader
         for subconcept_loader in subconcept_loaders:
             try:
-                # Get a batch from this loader with error handling
-                batch_iter = iter(subconcept_loader)
-                batch_data = next(batch_iter, None)
+                batch_data = next(iter(subconcept_loader), None)
                 
                 if batch_data is None or len(batch_data) < 2:
-                    print(f"Warning: Empty or invalid batch from subconcept loader")
+                    print(f"Warning: Empty or invalid batch from subconcept loader 1")
                     continue
                     
                 imgs, sc_labels = batch_data
                 
                 if not len(imgs):
+                    print(f"Warning: Empty or invalid batch from subconcept loader 2")
                     continue
                     
                 # All images in this loader have the same subconcept
+                # We should have a check for this
                 sc_label = sc_labels[0].item()
                 
-                # Get the high-level concept this subconcept belongs to
+                # get high-level concept this subconcept belongs to
+                # make a fucntion in datasets or something for this instead
                 hl = sc_to_hl.get(sc_label, None)
                 if hl is None:
-                    # Skip if we don't have subspace mapping for this subconcept
                     print(f"Warning: No high-level concept found for subconcept {sc_label}")
                     continue
+                
+                subspace = subspace_mapping.get(hl, [])
+                model.module.change_mode(sc_label)
+                
+                # Vectorize images as one batch
+                imgs = imgs.cuda()
+                
+                # For each image in the batch
+                for i in range(len(imgs)):
+                    # Set the specific subconcept index - needed to align the correct axis
+                    # The old code did this but I am not sure why or what it is doing
+                    last_qcw.set_subconcept(sc_label)
+                    
+                    # Forward pass to accumulate alignment gradients
+                    out = model(imgs[i:i+1])
+                    
+                    if len(hook_storage.outputs) > 0:
+                        featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
+                        feat_avg = featmap.mean(dim=(2,3)).squeeze()  # shape [C]
+                        
+                        # Global Top-1: Is subconcept's axis the most activated? 
+                        # This really isnt the goal and shouldnt be the case other than for the most dominant concepts
+                        global_pred = feat_avg.argmax().item()
+                        if global_pred == sc_label:
+                            global_top1_correct += 1
+                        
+                        # Global Top-5: Is subconcept's axis among top 5 activated?
+                        top5_values, top5_indices = feat_avg.topk(5)
+                        if sc_label in top5_indices:
+                            global_top5_correct += 1
+                        
+                        # Subspace Top-1: Is the subconcept's axis most activated withing its high level subspace?
+                        if len(subspace) > 0:
+                            subspace_activations = feat_avg[subspace]
+                            subspace_pred_local = subspace_activations.argmax().item()
+                            predicted_global_axis = subspace[subspace_pred_local]
+                            if predicted_global_axis == sc_label:
+                                subspace_top1_correct += 1
+                        
+                        total_samples += 1
+                        hook_storage.outputs.clear()
             except Exception as e:
                 print(f"Error processing subconcept loader: {str(e)}")
                 continue
-            
-            # Get the subspace (all subconcepts under this high-level concept)
-            subspace = subspace_mapping.get(hl, [])
-            
-            # Set mode to this subconcept's index for alignment
-            model.module.change_mode(sc_label)
-            
-            # Process images
-            imgs = imgs.cuda()
-            
-            # Process each image
-            for i in range(len(imgs)):
-                # Set the specific subconcept index
-                last_qcw.set_subconcept(sc_label)
-                
-                # Forward pass
-                out = model(imgs[i:i+1])
-                
-                if len(hook_storage.outputs) == 0:
-                    continue
-                
-                # Extract activations
-                featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
-                feat_avg = featmap.mean(dim=(2,3)).squeeze()  # shape [C]
-                
-                # Global Top-1: Is the highest activated axis the correct subconcept?
-                global_pred = feat_avg.argmax().item()
-                if global_pred == sc_label:
-                    global_top1_correct += 1
-                
-                # Global Top-5: Is the correct subconcept among the top 5 activated axes?
-                top5_values, top5_indices = feat_avg.topk(5)
-                if sc_label in top5_indices:
-                    global_top5_correct += 1
-                
-                # Subspace Top-1: Within the subspace, is the highest activated axis the correct subconcept?
-                if len(subspace) > 0:
-                    # Extract activations only for axes in this subspace
-                    subspace_activations = feat_avg[subspace]
-                    subspace_pred_local = subspace_activations.argmax().item()
-                    # Convert local index to global axis index
-                    predicted_global_axis = subspace[subspace_pred_local]
-                    if predicted_global_axis == sc_label:
-                        subspace_top1_correct += 1
-                
-                total_samples += 1
-                hook_storage.outputs.clear()
     
-    # Cleanup
-    handle.remove()
+    # Update rotation matrix after processing all subconcepts
     model.module.update_rotation_matrix()
-    model.module.change_mode(-1)
+    model.module.change_mode(-1)  # Reset mode
+    
+    # Cleanup and return to training mode
+    handle.remove()
     model.train()
     
-    # Calculate percentages
+    # Calculate percentage metrics
     if total_samples > 0:
         global_top1_pct = 100.0 * global_top1_correct / total_samples
         subspace_top1_pct = 100.0 * subspace_top1_correct / total_samples
@@ -545,65 +550,6 @@ def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping):
         'subspace_top1': subspace_top1_pct,
         'global_top5': global_top5_pct
     }
-
-def run_concept_alignment(model, concept_loader):
-    """
-    Legacy alignment function for single-loader compatibility.
-    Uses Global Top-1 accuracy (correctly predicting a subconcept as the highest activated axis).
-    
-    This function is maintained for backward compatibility, but the run_concept_alignment_all
-    function should be preferred for more comprehensive alignment metrics.
-    """
-    model.eval()
-    from types import SimpleNamespace
-    hook_storage = SimpleNamespace(outputs=[])
-
-    def forward_hook(module, input, output):
-        hook_storage.outputs.append(output)
-
-    last_qcw = get_last_qcw_layer(model.module)
-    handle = last_qcw.register_forward_hook(forward_hook)
-
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for imgs, sc_labels in concept_loader:
-            # Dataset now returns sc_label (subconcept index)
-            imgs = imgs.cuda()
-            sc_labels = sc_labels.cuda()
-
-            # Set subconcept_idx for precise alignment - loop through batch for proper alignment
-            for i in range(len(sc_labels)):
-                # Get the subconcept index for this image
-                sc_label = sc_labels[i].item()
-                
-                # Set the mode to this subconcept
-                model.module.change_mode(sc_label)
-                last_qcw.set_subconcept(sc_label)
-                
-                # Process a single image
-                out = model(imgs[i:i+1])
-                
-                if len(hook_storage.outputs) == 0:
-                    continue
-
-                featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
-                feat_avg = featmap.mean(dim=(2,3))  # shape [1, C]
-                pred_axis = feat_avg.argmax(dim=1)[0]  # get the predicted axis
-                
-                # Compare with subconcept label for correct axis alignment
-                correct += (pred_axis == sc_label).item()
-                total += 1
-                
-                hook_storage.outputs.clear()
-
-    handle.remove()
-    model.module.update_rotation_matrix()
-    model.module.change_mode(-1)
-    model.train()
-    
-    # Return the accuracy of subconcept alignment
-    return (correct / max(1, total)) * 100.0 if total > 0 else 0.0
 
 def validate(loader, model, epoch, writer, mode="Val"):
     model.eval()
