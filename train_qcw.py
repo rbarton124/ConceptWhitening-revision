@@ -32,9 +32,9 @@ LR_DECAY_EPOCH  = 30
 LR_DECAY_FACTOR = 0.1
 CROP_SIZE       = 224
 RESIZE_SIZE     = 256
-CW_ALIGN_FREQ   = 20   # how often (in mini-batches) we do concept alignment
+CW_ALIGN_FREQ   = 40   # how often (in mini-batches) we do concept alignment
 PIN_MEMORY      = True
-ALIGNMENT_BATCHES_PER_STEP = 2
+ALIGNMENT_BATCHES_PER_STEP = 4
 
 ########################
 # Argument Parser
@@ -392,7 +392,7 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
             # Skip the first loader (which is the main loader with all concepts)
             # and use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = run_concept_alignment_all(model, concept_loaders[1:], concept_ds.subspace_mapping)
+            alignment_metrics = run_concept_alignment_all(model, concept_loaders[1:], concept_ds)
             
             # Update metrics
             global_top1 = alignment_metrics['global_top1']
@@ -415,35 +415,32 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping, batch_per_concept=1):
+def run_concept_alignment_all(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
     """
     Aligns concepts by accumulating gradients and calculates multiple alignment metrics:
     
     1. For each subconcept-specific loader, get a batch of images
     2. Set model mode to the subconcept's index and process the batch
-    3. Calculate and return alignment metrics
-    4. After all subconcepts, update the rotation matrix once
-
-    3 and 4 should probably be switched
+    3. Update the rotation matrix after all subconcepts are processed
+    4. Calculate and return alignment metrics
     
     Args:
         model: The QCW model
         subconcept_loaders: List of subconcept-specific dataloaders
-        subspace_mapping: Dict mapping high-level concepts to lists of subconcept indices
-        batch_per_concept: Number of batches to process per subconcept (default: 1)
+        concept_dataset: The ConceptDataset_QCW instance to get mappings from
+        batch_per_concept: Number of batches to process per subconcept (default: ALIGNMENT_BATCHES_PER_STEP)
         
     Returns:
         Dict with alignment metrics (global_top1, subspace_top1, global_top5)
     """
+    subspace_mapping = concept_dataset.subspace_mapping
     model.eval()
     
-    # Create inverted mapping from subconcept index to high-level concept
-    # this should be a function in concept datasets
-    sc_to_hl = {}
-    for hl, sc_indices in subspace_mapping.items():
-        for sc_idx in sc_indices:
-            sc_to_hl[sc_idx] = hl
+    # Get subconcept to high-level concept mapping from the dataset
+    sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
 
+    # Setup hook to capture outputs for metrics calculation
+    from types import SimpleNamespace
     hook_storage = SimpleNamespace(outputs=[])
     
     def forward_hook(module, input, output):
@@ -452,58 +449,105 @@ def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping, batch
     last_qcw = get_last_qcw_layer(model.module)
     handle = last_qcw.register_forward_hook(forward_hook)
     
-    global_top1_correct = 0
-    subspace_top1_correct = 0
-    global_top5_correct = 0
-    total_samples = 0
-    
+    # PHASE 1: ACCUMULATE GRADIENTS FOR ALIGNMENT
     with torch.no_grad():
         for subconcept_loader in subconcept_loaders:
             try:
                 batch_data = next(iter(subconcept_loader), None)
                 
                 if batch_data is None or len(batch_data) < 2:
-                    print(f"Warning: Empty or invalid batch from subconcept loader 1")
+                    print(f"Warning: Empty or invalid batch from subconcept loader (missing data)")
                     continue
                     
                 imgs, sc_labels = batch_data
                 
                 if not len(imgs):
-                    print(f"Warning: Empty or invalid batch from subconcept loader 2")
+                    print(f"Warning: Empty or invalid batch from subconcept loader (empty images)")
                     continue
                     
-                # All images in this loader have the same subconcept
-                # We should have a check for this
+                # Check that all images in this loader have the same subconcept
+                if not all(label == sc_labels[0] for label in sc_labels):
+                    print(f"Warning: Mixed subconcept labels in batch: {sc_labels.tolist()}")
+                    continue
+                
                 sc_label = sc_labels[0].item()
                 
-                # get high-level concept this subconcept belongs to
-                # make a fucntion in datasets or something for this instead
+                # Get high-level concept this subconcept belongs to
                 hl = sc_to_hl.get(sc_label, None)
                 if hl is None:
                     print(f"Warning: No high-level concept found for subconcept {sc_label}")
                     continue
                 
-                subspace = subspace_mapping.get(hl, [])
+                # Set model mode to this subconcept's index
                 model.module.change_mode(sc_label)
                 
-                # Vectorize images as one batch
+                # Move images to GPU
                 imgs = imgs.cuda()
                 
-                # For each image in the batch
+                # Process each image in the batch
                 for i in range(len(imgs)):
-                    # Set the specific subconcept index - needed to align the correct axis
-                    # The old code did this but I am not sure why or what it is doing
+                    # Set the specific subconcept index for this forward pass
+                    # This tells the QCW layer which axis to align with during the forward pass
+                    # (In the code, it's used to determine the target_axis in forward method)
                     last_qcw.set_subconcept(sc_label)
                     
                     # Forward pass to accumulate alignment gradients
+                    out = model(imgs[i:i+1])
+                    
+                    # Clear any hook outputs to save memory
+                    if len(hook_storage.outputs) > 0:
+                        hook_storage.outputs.clear()
+            except Exception as e:
+                print(f"Error processing subconcept loader: {str(e)}")
+                continue
+    
+    # PHASE 2: UPDATE ROTATION MATRIX
+    # Apply the accumulated gradients to update the rotation matrix
+    model.module.update_rotation_matrix()
+    
+    # Reset model mode for evaluation
+    model.module.change_mode(-1)
+    
+    # PHASE 3: CALCULATE METRICS AFTER ALIGNMENT
+    # Initialize metric counters
+    global_top1_correct = 0
+    subspace_top1_correct = 0
+    global_top5_correct = 0
+    total_samples = 0
+    
+    # Now calculate alignment metrics with the updated rotation matrix
+    with torch.no_grad():
+        for subconcept_loader in subconcept_loaders:
+            try:
+                batch_data = next(iter(subconcept_loader), None)
+                
+                if batch_data is None or len(batch_data) < 2 or not len(batch_data[0]):
+                    continue
+                    
+                imgs, sc_labels = batch_data
+                sc_label = sc_labels[0].item()
+                
+                # Get high-level concept and its subspace
+                hl = sc_to_hl.get(sc_label, None)
+                if hl is None:
+                    continue
+                    
+                subspace = subspace_mapping.get(hl, [])
+                
+                # Move images to GPU
+                imgs = imgs.cuda()
+                
+                # Process each image and calculate metrics
+                for i in range(len(imgs)):
+                    # Forward pass for measurement
                     out = model(imgs[i:i+1])
                     
                     if len(hook_storage.outputs) > 0:
                         featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
                         feat_avg = featmap.mean(dim=(2,3)).squeeze()  # shape [C]
                         
-                        # Global Top-1: Is subconcept's axis the most activated? 
-                        # This really isnt the goal and shouldnt be the case other than for the most dominant concepts
+                        # Global Top-1: Is subconcept's axis the most activated?
+                        # Note: This might not be the goal for all subconcepts, only for dominant ones
                         global_pred = feat_avg.argmax().item()
                         if global_pred == sc_label:
                             global_top1_correct += 1
@@ -513,7 +557,7 @@ def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping, batch
                         if sc_label in top5_indices:
                             global_top5_correct += 1
                         
-                        # Subspace Top-1: Is the subconcept's axis most activated withing its high level subspace?
+                        # Subspace Top-1: Is the subconcept's axis most activated within its high-level subspace?
                         if len(subspace) > 0:
                             subspace_activations = feat_avg[subspace]
                             subspace_pred_local = subspace_activations.argmax().item()
@@ -524,12 +568,8 @@ def run_concept_alignment_all(model, subconcept_loaders, subspace_mapping, batch
                         total_samples += 1
                         hook_storage.outputs.clear()
             except Exception as e:
-                print(f"Error processing subconcept loader: {str(e)}")
+                print(f"Error calculating metrics: {str(e)}")
                 continue
-    
-    # Update rotation matrix after processing all subconcepts
-    model.module.update_rotation_matrix()
-    model.module.change_mode(-1)  # Reset mode
     
     # Cleanup and return to training mode
     handle.remove()

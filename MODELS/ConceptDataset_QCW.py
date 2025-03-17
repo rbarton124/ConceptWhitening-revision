@@ -173,6 +173,14 @@ class ConceptDataset(Dataset):
                 sc_to_hl[sc_idx] = hl_idx
         return sc_to_hl
 
+    def get_subconcept_to_hl_name_mapping(self):
+        """Returns a mapping from subconcept index to high-level concept name"""
+        sc_to_hl_name = {}
+        for hl_name, sc_indices in self._subspace_mapping.items():
+            for sc_idx in sc_indices:
+                sc_to_hl_name[sc_idx] = hl_name
+        return sc_to_hl_name
+
     def __repr__(self):
         return (f"ConceptDataset(\n"
                 f" root_dir={self.root_dir},\n"
