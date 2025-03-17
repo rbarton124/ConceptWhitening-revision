@@ -57,6 +57,10 @@ class ResNetQCW(nn.Module):
             for j, block in enumerate(layer):
                 global_idx = sum(len(getattr(self.backbone, ln2)) for ln2 in layer_names[:i]) + j + 1
                 if global_idx in whitened_layers:
+                    # a print which says at what layer we replaced bn with cw
+                    print(f"Replacing BN layer in {ln}[{j}] (global index {global_idx}) "
+                          f"with QCW layer. Expected dimension: {bn_dims[i]} channels; "
+                          f"Activation mode: {act_mode}.")
                     dim = bn_dims[i]
                     qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1)
                     if self.use_subspace and self.subspaces is not None:
@@ -67,7 +71,7 @@ class ResNetQCW(nn.Module):
         # Load pretrained weights if provided, this logic needs to be fleshed out an unified with the train resume logic
         if pretrained_model and os.path.isfile(pretrained_model):
             self.load_model(pretrained_model, vanilla_pretrain)
-    
+     
     def change_mode(self, mode):
         for cw in self.cw_layers:
             cw.mode = mode
