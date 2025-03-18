@@ -1,15 +1,3 @@
-"""
-Script to Organize CUB_200_2011 into the New Directory Structure for QCW Training
-
-Key Fixes/Enhancements:
-- Two modes: "concepts" or "attributes".
-- A -v/--verbose flag controlling log verbosity:
-    0 => silent (no console output; tqdm disabled),
-    1 => minimal (some basic info & tqdm),
-    2 => includes per-image bounding box or fallback messages,
-    3 => full debug output for part-loc logic & mapping details.
-"""
-
 import os
 import argparse
 import pandas as pd
@@ -46,11 +34,7 @@ def parse_args():
                         help="Increase verbosity level. Use -v for basic progress, -vv for per-image messages, -vvv for full debug output.")
     return parser.parse_args()
 
-# We'll define a helper to conditionally print messages depending on the verbosity.
 def vprint(args, level, msg):
-    """
-    If args.verbose >= level, print the message. Otherwise do nothing.
-    """
     if args.verbose >= level:
         print(msg)
 
@@ -169,7 +153,6 @@ def build_main_dataset(args):
     classdf = load_classes(cub_dir)
     df = imagesdf.merge(splitdf,on="image_id").merge(classdf,on="image_id")
 
-    # For tqdm disabling if verbose=0
     disable_tqdm = (args.verbose<1)
 
     for sub in ["train","val","test"]:

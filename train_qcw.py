@@ -45,7 +45,7 @@ parser.add_argument("--concept_dir", required=True, help="Path to concept datase
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
-parser.add_argument("--whitened_layers", default="5,8", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
+parser.add_argument("--whitened_layers", default="7", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
 parser.add_argument("--act_mode", default="pool_max", help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
 # Training hyperparams
@@ -157,6 +157,7 @@ def build_concept_loaders(args):
         transform=concept_transform,
         crop_mode=crop_mode
     )
+    # save images here once they are made and cropped and saved to the dataset
     
     # Main loader with all subconcepts (shuffled)
     main_concept_loader = DataLoader(
@@ -391,23 +392,19 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         # Concept alignment every N batches using subconcept-specific loaders
         if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
             # Skip the first loader (which is the main loader with all concepts)
-            # and use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = run_concept_alignment_all(model, concept_loaders[1:], concept_ds)
+            # use subconcept-specific loaders (starting from index 1)
+            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds)
             
-            # Update metrics
             global_top1 = alignment_metrics['global_top1']
             subspace_top1 = alignment_metrics['subspace_top1']
             global_top5 = alignment_metrics['global_top5']
             
-            # Use the subspace_top1 as the main alignment score for backward compatibility
             alignment_score.update(subspace_top1)
             
-            # Log all metrics
             writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
             writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
 
-        # Update the pbar with the new alignment score
         pbar.set_postfix({"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", 
                           "Top5": f"{top5.avg:.2f}", "ConceptAlignment": f"{alignment_score.avg:.2f}"})
 
@@ -415,7 +412,7 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def run_concept_alignment_all(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
+def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
     """
     Aligns concepts by accumulating gradients and calculates multiple alignment metrics:
     
@@ -449,7 +446,7 @@ def run_concept_alignment_all(model, subconcept_loaders, concept_dataset, batch_
     last_qcw = get_last_qcw_layer(model.module)
     handle = last_qcw.register_forward_hook(forward_hook)
     
-    # PHASE 1: ACCUMULATE GRADIENTS FOR ALIGNMENT
+    # ACCUMULATE GRADIENTS FOR ALIGNMENT
     with torch.no_grad():
         for subconcept_loader in subconcept_loaders:
             try:
@@ -501,7 +498,7 @@ def run_concept_alignment_all(model, subconcept_loaders, concept_dataset, batch_
                 print(f"Error processing subconcept loader: {str(e)}")
                 continue
     
-    # PHASE 2: UPDATE ROTATION MATRIX
+    # UPDATE ROTATION MATRIX
     # Apply the accumulated gradients to update the rotation matrix
     model.module.update_rotation_matrix()
     
