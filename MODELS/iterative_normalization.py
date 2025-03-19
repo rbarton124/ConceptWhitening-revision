@@ -194,6 +194,7 @@ class IterNormRotation(torch.nn.Module):
 
     The Whitening part is adapted from IterNorm. The core of CW module is learning
     an extra rotation matrix R that align target concepts with the output feature maps.
+    Each subconcept should have its own distinct axis during the alignment process.
     """
     def __init__(self, num_features, num_groups=1, num_channels=None, T=10, dim=4, eps=1e-5, momentum=0.05, affine=False,
                  mode=-1, activation_mode='pool_max', *args, **kwargs):
@@ -239,7 +240,9 @@ class IterNormRotation(torch.nn.Module):
             'running_rot',
             torch.eye(num_channels, device=torch.device('cpu')).expand(num_groups, num_channels, num_channels).clone()
         )
+        # Store gradients for each axis (concept/subconcept)
         self.register_buffer('sum_G', torch.zeros(num_groups, num_channels, num_channels))
+        # Counter for each individual axis to track update frequency
         self.register_buffer("counter", torch.ones(num_channels) * 0.001)
 
         self.reset_parameters()
@@ -299,7 +302,7 @@ class IterNormRotation(torch.nn.Module):
 
             self.running_rot = R
             self.counter = torch.ones(size_R[-1], device=G.device) * 0.001
-
+        
     def forward(self, X: torch.Tensor):
         X_hat = iterative_normalization_py.apply(
             X, self.running_mean, self.running_wm, self.num_channels,
@@ -311,26 +314,29 @@ class IterNormRotation(torch.nn.Module):
         X_hat = X_hat.view(size_X[0], size_R[0], size_R[2], *size_X[2:])
 
         with torch.no_grad():
-            if self.mode >= 0:
+            # Determine which axis to align with - use subconcept_idx if available, otherwise use mode (high-level concept)
+            target_axis = self.mode
+            
+            if target_axis >= 0:
                 if self.activation_mode == 'mean':
                     grad = -X_hat.mean((0, 3, 4))
-                    self.sum_G[:, self.mode, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, self.mode, :]
-                    self.counter[self.mode] += 1
+                    self.sum_G[:, target_axis, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, target_axis, :]
+                    self.counter[target_axis] += 1
                 elif self.activation_mode == 'max':
                     X_test = torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
                     max_values = torch.max(torch.max(X_test, 3, keepdim=True)[0], 4, keepdim=True)[0]
                     max_bool = (max_values == X_test)
                     denom = max_bool.to(X_hat).sum((3, 4))
                     grad = -((X_hat * max_bool.to(X_hat)).sum((3, 4)) / denom).mean(0)
-                    self.sum_G[:, self.mode, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, self.mode, :]
-                    self.counter[self.mode] += 1
+                    self.sum_G[:, target_axis, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, target_axis, :]
+                    self.counter[target_axis] += 1
                 elif self.activation_mode == 'pos_mean':
                     X_test = torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
                     pos_bool = (X_test > 0)
                     denom = pos_bool.to(X_hat).sum((3, 4)) + 0.0001
                     grad = -((X_hat * pos_bool.to(X_hat)).sum((3, 4)) / denom).mean(0)
-                    self.sum_G[:, self.mode, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, self.mode, :]
-                    self.counter[self.mode] += 1
+                    self.sum_G[:, target_axis, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, target_axis, :]
+                    self.counter[target_axis] += 1
                 elif self.activation_mode == 'pool_max':
                     X_test = torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
                     X_test_nchw = X_test.reshape(size_X)
@@ -340,8 +346,8 @@ class IterNormRotation(torch.nn.Module):
                     maxpool_bool = (X_test == X_test_unpool)
                     denom = maxpool_bool.to(X_hat).sum((3, 4))
                     grad = -((X_hat * maxpool_bool.to(X_hat)).sum((3, 4)) / denom).mean(0)
-                    self.sum_G[:, self.mode, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, self.mode, :]
-                    self.counter[self.mode] += 1
+                    self.sum_G[:, target_axis, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, target_axis, :]
+                    self.counter[target_axis] += 1
 
         X_hat = torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
         X_hat = X_hat.view(*size_X)

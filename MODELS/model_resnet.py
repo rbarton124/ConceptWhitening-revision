@@ -35,7 +35,7 @@ def build_resnet_cw(
             whitened_layers=whitened_layers,
             arch='resnet50',
             layers=layers_cfg,
-            model_file=None,      # We'll load model_file manually below
+            model_file=None,      # load model_file manually below
             act_mode=act_mode
         )
     elif depth == 18:
