@@ -34,7 +34,7 @@ CROP_SIZE       = 224
 RESIZE_SIZE     = 256
 CW_ALIGN_FREQ   = 40   # how often (in mini-batches) we do concept alignment
 PIN_MEMORY      = True
-ALIGNMENT_BATCHES_PER_STEP = 4
+ALIGNMENT_BATCHES_PER_STEP = 1
 
 ########################
 # Argument Parser
@@ -45,7 +45,7 @@ parser.add_argument("--concept_dir", required=True, help="Path to concept datase
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
-parser.add_argument("--whitened_layers", default="5,6,7,8", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
+parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
 parser.add_argument("--act_mode", default="pool_max", help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
 # Training hyperparams
@@ -411,6 +411,201 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Loss", losses.val, iteration)
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
+        
+
+def align_concepts_per_layer(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
+    """
+    Per-layer concept alignment in sequence.
+
+    1) We iterate over each CW layer in model.module.cw_layers one at a time.
+    2) Temporarily disable alignment (mode = -1) in all other layers.
+    3) For each subconcept-specific loader, we accumulate alignment gradients
+       only for the current CW layer (setting cw.mode = sc_label on that layer).
+    4) After processing all subconcepts for this layer, we call that layer's update_rotation_matrix().
+    5) Move on to the next CW layer and repeat.
+
+    Finally, we compute the same global/subspace alignment metrics by hooking
+    the *last* CW layer (as in your original code). That means we still measure
+    concept-axis activation in the final layer's feature map.
+
+    Args:
+        model: The QCW model (DataParallel-wrapped).
+        subconcept_loaders: List of subconcept-specific dataloaders
+                            (index 0 might be a "main" loader, so typically
+                             you'll use [1:] for actual subconcept alignment).
+        concept_dataset: The ConceptDataset_QCW instance for subspace/HL mappings.
+        batch_per_concept: Number of batches per concept (unused here, but kept for consistency).
+
+    Returns:
+        A dict with { 'global_top1', 'subspace_top1', 'global_top5' } alignment metrics,
+        measured by hooking the final CW layer (like the old code).
+    """
+    import torch
+    from types import SimpleNamespace
+
+    subspace_mapping = concept_dataset.subspace_mapping
+    model.eval()
+
+    # Mapping from subconcept idx -> high-level concept name
+    sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
+
+    # -------------------------------------------------
+    # SETUP HOOK for capturing final-layer features
+    # -------------------------------------------------
+    hook_storage = SimpleNamespace(outputs=[])
+    
+    def forward_hook(module, input, output):
+        hook_storage.outputs.append(output)
+    
+    # We'll keep using the last CW layer for measuring alignment metrics
+    last_qcw = get_last_qcw_layer(model.module)
+    handle = last_qcw.register_forward_hook(forward_hook)
+    
+    # -------------------------------------------------
+    # PHASE 1 & 2: ACCUMULATE GRADIENTS, PER-LAYER
+    # -------------------------------------------------
+    with torch.no_grad():
+        # 1) Iterate over each whitened layer in sequence
+        for cw_layer in model.module.cw_layers:
+            # (A) Temporarily disable alignment in all other layers
+            for layer in model.module.cw_layers:
+                if layer is not cw_layer:
+                    layer.mode = -1
+
+            # (B) Align each subconcept for this single CW layer
+            for subconcept_loader in subconcept_loaders:
+                try:
+                    batch_data = next(iter(subconcept_loader), None)
+                    if batch_data is None or len(batch_data) < 2:
+                        print("Warning: Empty or invalid batch from subconcept loader (missing data)")
+                        continue
+
+                    imgs, sc_labels, paths = batch_data
+                    if not len(imgs):
+                        print("Warning: Empty or invalid batch from subconcept loader (empty images)")
+                        continue
+
+                    # Check that all images in this loader have the same subconcept
+                    if not all(label == sc_labels[0] for label in sc_labels):
+                        print(f"Warning: Mixed subconcept labels in batch: {sc_labels.tolist()}")
+                        continue
+
+                    sc_label = sc_labels[0].item()
+
+                    hl = sc_to_hl.get(sc_label, None)
+                    if hl is None:
+                        print(f"Warning: No high-level concept found for subconcept {sc_label}")
+                        continue
+
+                    # Now turn on alignment for THIS layer only, for sc_label
+                    cw_layer.mode = sc_label
+
+                    if sc_label == 1:
+                        print(f"Subconcept '{sc_label}' first 4 images are:")
+                        for p in paths[:4]:
+                            print(p)
+
+
+                    # Send images to GPU
+                    imgs = imgs.cuda()
+
+                    # Forward pass each image to accumulate alignment stats
+                    for i in range(len(imgs)):
+                        _ = model(imgs[i:i+1])  # accumulate alignment gradient in cw_layer
+
+                        # Clear hook outputs if any
+                        if len(hook_storage.outputs) > 0:
+                            hook_storage.outputs.clear()
+
+                except Exception as e:
+                    print(f"Error processing subconcept loader: {str(e)}")
+                    continue
+
+            # (C) Update rotation matrix for this single layer
+            cw_layer.update_rotation_matrix()
+
+            # (D) After finishing this layer, set cw_layer.mode = -1
+            cw_layer.mode = -1
+
+    # -------------------------------------------------
+    # PHASE 3: CALCULATE METRICS AFTER ALL LAYERS ALIGNED
+    # -------------------------------------------------
+    # We do exactly the same post-alignment pass as your original code,
+    # hooking only the last CW layer's outputs for measuring concept-axis activation.
+    global_top1_correct = 0
+    subspace_top1_correct = 0
+    global_top5_correct = 0
+    total_samples = 0
+
+    with torch.no_grad():
+        for subconcept_loader in subconcept_loaders:
+            try:
+                batch_data = next(iter(subconcept_loader), None)
+                if batch_data is None or len(batch_data) < 2 or not len(batch_data[0]):
+                    continue
+
+                imgs, sc_labels, paths = batch_data
+                sc_label = sc_labels[0].item()
+
+                hl = sc_to_hl.get(sc_label, None)
+                if hl is None:
+                    continue
+                subspace = subspace_mapping.get(hl, [])
+
+                imgs = imgs.cuda()
+
+                # Forward pass & compute final-layer feature alignment
+                for i in range(len(imgs)):
+                    _ = model(imgs[i:i+1])  # gather final-layer features in hook_storage
+
+                    if len(hook_storage.outputs) > 0:
+                        featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
+                        feat_avg = featmap.mean(dim=(2,3)).squeeze()  # shape [C]
+
+                        # Global Top-1: Is subconcept's axis the most activated?
+                        global_pred = feat_avg.argmax().item()
+                        if global_pred == sc_label:
+                            global_top1_correct += 1
+
+                        # Global Top-5: Is subconcept's axis among top 5 activated?
+                        _, top5_indices = feat_avg.topk(5)
+                        if sc_label in top5_indices:
+                            global_top5_correct += 1
+
+                        # Subspace Top-1: Is the subconcept's axis most activated within subspace?
+                        if len(subspace) > 0:
+                            subspace_activations = feat_avg[subspace]
+                            subspace_pred_local = subspace_activations.argmax().item()
+                            predicted_global_axis = subspace[subspace_pred_local]
+                            if predicted_global_axis == sc_label:
+                                subspace_top1_correct += 1
+
+                        total_samples += 1
+                        hook_storage.outputs.clear()
+
+            except Exception as e:
+                print(f"Error calculating metrics: {str(e)}")
+                continue
+
+    # Cleanup: remove hook, return to train mode
+    handle.remove()
+    model.train()
+
+    # Final metrics
+    if total_samples > 0:
+        global_top1_pct = 100.0 * global_top1_correct / total_samples
+        subspace_top1_pct = 100.0 * subspace_top1_correct / total_samples
+        global_top5_pct = 100.0 * global_top5_correct / total_samples
+    else:
+        global_top1_pct = 0.0
+        subspace_top1_pct = 0.0
+        global_top5_pct = 0.0
+
+    return {
+        'global_top1': global_top1_pct,
+        'subspace_top1': subspace_top1_pct,
+        'global_top5': global_top5_pct
+    }
 
 def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
     """
@@ -456,7 +651,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
                     print(f"Warning: Empty or invalid batch from subconcept loader (missing data)")
                     continue
                     
-                imgs, sc_labels = batch_data
+                imgs, sc_labels, paths = batch_data
                 
                 if not len(imgs):
                     print(f"Warning: Empty or invalid batch from subconcept loader (empty images)")
@@ -477,17 +672,17 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
                 
                 # Set model mode to this subconcept's index
                 model.module.change_mode(sc_label)
+
+                if sc_label == 1:
+                    print(f"Subconcept '{sc_label}' first 4 images are:")
+                    for p in paths[:4]:
+                        print(p)
                 
                 # Move images to GPU
                 imgs = imgs.cuda()
                 
                 # Process each image in the batch
                 for i in range(len(imgs)):
-                    # Set the specific subconcept index for this forward pass
-                    # This tells the QCW layer which axis to align with during the forward pass
-                    # (In the code, it's used to determine the target_axis in forward method)
-                    last_qcw.set_subconcept(sc_label)
-                    
                     # Forward pass to accumulate alignment gradients
                     out = model(imgs[i:i+1])
                     
@@ -521,7 +716,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
                 if batch_data is None or len(batch_data) < 2 or not len(batch_data[0]):
                     continue
                     
-                imgs, sc_labels = batch_data
+                imgs, sc_labels, paths = batch_data
                 sc_label = sc_labels[0].item()
                 
                 # Get high-level concept and its subspace
@@ -530,7 +725,12 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
                     continue
                     
                 subspace = subspace_mapping.get(hl, [])
-                
+
+                # if sc_label == 1:
+                #     print(f"Subconcept '{sc_label}' first 4 images are:")
+                #     for p in paths[:4]:
+                #         print(p)
+
                 # Move images to GPU
                 imgs = imgs.cuda()
                 

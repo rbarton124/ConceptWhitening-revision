@@ -146,7 +146,7 @@ class ConceptDataset(Dataset):
 
         # For the subconcept-specific loaders in the concept alignment process, we only need
         # to return the subconcept label, since each loader is dedicated to a specific subconcept
-        return img, sc_label
+        return img, sc_label, img_path
 
     @property
     def subspace_mapping(self):

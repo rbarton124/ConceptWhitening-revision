@@ -206,9 +206,7 @@ class IterNormRotation(torch.nn.Module):
         self.num_features = num_features
         self.affine = affine
         self.dim = dim
-        self.mode = mode  # High-level concept mode
-        self.subconcept_idx = -1  # Subconcept index to be aligned
-        self.use_subconcept = True  # Whether to use subconcept alignment
+        self.mode = mode
         self.activation_mode = activation_mode
 
         assert num_groups == 1, 'Please keep num_groups = 1.'
@@ -304,10 +302,6 @@ class IterNormRotation(torch.nn.Module):
 
             self.running_rot = R
             self.counter = torch.ones(size_R[-1], device=G.device) * 0.001
-
-    def set_subconcept(self, subconcept_idx):
-        """Set the subconcept index to be aligned in the next forward pass"""
-        self.subconcept_idx = subconcept_idx
         
     def forward(self, X: torch.Tensor):
         X_hat = iterative_normalization_py.apply(
@@ -321,7 +315,7 @@ class IterNormRotation(torch.nn.Module):
 
         with torch.no_grad():
             # Determine which axis to align with - use subconcept_idx if available, otherwise use mode (high-level concept)
-            target_axis = self.subconcept_idx if (self.use_subconcept and self.subconcept_idx >= 0) else self.mode
+            target_axis = self.mode
             
             if target_axis >= 0:
                 if self.activation_mode == 'mean':
@@ -354,9 +348,6 @@ class IterNormRotation(torch.nn.Module):
                     grad = -((X_hat * maxpool_bool.to(X_hat)).sum((3, 4)) / denom).mean(0)
                     self.sum_G[:, target_axis, :] = self.momentum * grad + (1. - self.momentum) * self.sum_G[:, target_axis, :]
                     self.counter[target_axis] += 1
-                    
-                # Reset subconcept_idx after use
-                self.subconcept_idx = -1
 
         X_hat = torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
         X_hat = X_hat.view(*size_X)
