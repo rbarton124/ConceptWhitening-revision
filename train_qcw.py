@@ -28,23 +28,21 @@ from MODELS.ConceptDataset_QCW import ConceptDataset
 ########################
 # Global Constants
 ########################
-LR_DECAY_FACTOR = 0.1
-LR_DECAY_EPOCH  = 50
 CROP_SIZE       = 224
 RESIZE_SIZE     = 256
-CW_ALIGN_FREQ   = 40   # how often (in mini-batches) we do concept alignment
 PIN_MEMORY      = True
-ALIGNMENT_BATCHES_PER_STEP = 4
-
 ########################
 # Argument Parser
 ########################
 parser = argparse.ArgumentParser(description="Train Quantized Concept Whitening (QCW) - Revised")
+
+# Required arguments
 parser.add_argument("--data_dir", required=True, help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")
 parser.add_argument("--concept_dir", required=True, help="Path to concept dataset with concept_train/, concept_val/ (optional), and bboxes.json.")
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
+# Model hyperparams
 parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
 parser.add_argument("--act_mode", default="pool_max", help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
@@ -52,19 +50,22 @@ parser.add_argument("--act_mode", default="pool_max", help="Activation mode for 
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
 parser.add_argument("--lr", type=float, default=0.1, help="Initial learning rate.")
+parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
+parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
+# CW Training hyperparams
+parser.add_argument("--batches_per_concept", type=int, default=1, help="Number of batches per subconcept for each alignment step.")
+parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in mini-batches) we do concept alignment.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
-
+# System
 parser.add_argument("--seed", type=int, default=1234, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 # Feature toggles
-parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.")
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
-# Still need to add this logic in!
-parser.add_argument("--cw_loss_weight", type=float, default=1.0, help="Weight for QCW loss in alignment, if integrated alignment code.")
 
 args = parser.parse_args()
 
@@ -244,7 +245,7 @@ for sc_label, loader in subconcept_loaders:
 ########################
 # Build QCW Model
 ########################
-if not args.disable_subspaces:
+if not args.disable_subspaces: # this logic is not fleshed out yet
     subspaces = concept_ds.subspace_mapping  # e.g. { "wing": [...], "beak": [...], ... }
 else:
     # lumps each HL concept into dimension [0], or each concept => single axis
@@ -256,7 +257,7 @@ model = build_resnet_qcw(
     whitened_layers=[int(x) for x in args.whitened_layers.split(",")],
     act_mode=args.act_mode,
     subspaces=subspaces,
-    use_subspace=(not args.disable_subspaces),
+    use_subspace=(not args.disable_subspaces), # this logic is not fleshed out yet
     use_free=args.use_free, # doesn't do anything
     pretrained_model=None,
     vanilla_pretrain=True
@@ -358,7 +359,7 @@ model = nn.DataParallel(model).cuda()
 # Train + Align
 ########################
 def adjust_lr(optimizer, epoch, args):
-    new_lr = args.lr * (LR_DECAY_FACTOR ** (epoch // LR_DECAY_EPOCH))
+    new_lr = args.lr * (args.lr_decay_factor ** (epoch // args.lr_decay_epoch))
     for g in optimizer.param_groups:
         g["lr"] = new_lr
     return new_lr
@@ -392,10 +393,10 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         top5.update(prec5, imgs.size(0))
 
         # Concept alignment every N batches using subconcept-specific loaders
-        if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
+        if (i + 1) % args.cw_align_freq == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
             # Skip the first loader (which is the main loader with all concepts)
             # use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds)
+            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds, args.cw_align_batch)
             
             global_top1 = alignment_metrics['global_top1']
             subspace_top1 = alignment_metrics['subspace_top1']
@@ -414,7 +415,7 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
+def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept):
     """
     Aligns concepts by accumulating gradients and calculates multiple alignment metrics:
     
@@ -427,7 +428,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
         model: The QCW model
         subconcept_loaders: List of subconcept-specific dataloaders
         concept_dataset: The ConceptDataset_QCW instance to get mappings from
-        batch_per_concept: Number of batches to process per subconcept (default: ALIGNMENT_BATCHES_PER_STEP)
+        batch_per_concept: Number of batches to process per subconcept
         
     Returns:
         Dict with alignment metrics (global_top1, subspace_top1, global_top5)
