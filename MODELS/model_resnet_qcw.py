@@ -18,8 +18,6 @@ logging.basicConfig(
     ]
 )
 
-NUM_CLASSES = 200
-
 class BottleneckCW(nn.Module):
     expansion = 4
     
@@ -86,9 +84,9 @@ class BottleneckCW(nn.Module):
 # 2) The ResNetQCW class that uses the custom BottleneckCW if whitening is needed
 ################################################################################
 class ResNetQCW(nn.Module):
-    def __init__(self, num_classes=NUM_CLASSES, depth=18, whitened_layers=None,
+    def __init__(self, num_classes=200, depth=18, whitened_layers=None,
                  act_mode="pool_max", subspaces=None, use_subspace=True,
-                 use_free=False, pretrained_model=None, vanilla_pretrain=True):
+                 use_free=False, pretrained_model=None, vanilla_pretrain=False):
         """
         Build a ResNet with a CW layer placed AFTER the residual, matching old code.
 
@@ -164,7 +162,7 @@ class ResNetQCW(nn.Module):
 
         # Load any pretrained weights if given
         if pretrained_model and os.path.isfile(pretrained_model):
-            self.load_model(pretrained_model, vanilla_pretrain)
+            self.load_model(pretrained_model)
 
     def _wrap_basicblock(self, original_block):
         """
@@ -219,7 +217,7 @@ class ResNetQCW(nn.Module):
         for cw in self.cw_layers:
             cw.update_rotation_matrix()
 
-    def load_model(self, pretrain_path, vanilla_pretrain):
+    def load_model(self, pretrain_path):
         print(f"[ResNetQCW] Loading pretrained weights from {pretrain_path} ...")
         model_dict = self.state_dict()
         pretrain_dict = torch.load(pretrain_path, map_location="cpu")
@@ -252,8 +250,8 @@ class ResNetQCW(nn.Module):
         return out
 
 
-def build_resnet_qcw(num_classes=NUM_CLASSES, depth=18, whitened_layers=None, act_mode="pool_max",
-                     subspaces=None, use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=True):
+def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max", subspaces=None, 
+                     use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=False):
     """
     Main entry point to construct a ResNet with QCW blocks that attach CW AFTER the residual is added.
     """

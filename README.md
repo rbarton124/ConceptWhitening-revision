@@ -126,7 +126,7 @@ concept_data/
 ├── concept_val
 │   ├── wing
 │   │   ├── ...
-├── mappings.json  (may also reside at data/CUB, used for advanced subspace logic)
+├── mappings.json  (may also reside at data/CUB, required for advanced hl->ll mapping)
 └── ...
 ```
 

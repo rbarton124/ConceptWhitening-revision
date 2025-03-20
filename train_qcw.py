@@ -22,12 +22,13 @@ from types import SimpleNamespace
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True # ensure truncated images are loadable JIC
 
-from MODELS.model_resnet_qcw import build_resnet_qcw, NUM_CLASSES, get_last_qcw_layer
+from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
 ########################
 # Global Constants
 ########################
+NUM_CLASSES     = 200
 CROP_SIZE       = 224
 RESIZE_SIZE     = 256
 PIN_MEMORY      = True
@@ -55,6 +56,7 @@ parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rat
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
 # CW Training hyperparams
+parser.add_argument("--use_bn_qcw", action="store_true", help="Enable Quantized Concept Whitening (QCW) on BN layers inside the ResNet Block rather than outside.")
 parser.add_argument("--batches_per_concept", type=int, default=1, help="Number of batches per subconcept for each alignment step.")
 parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in mini-batches) we do concept alignment.")
 # Checkpoint
@@ -64,6 +66,7 @@ parser.add_argument("--only_load_weights", action="store_true", help="If set, on
 parser.add_argument("--seed", type=int, default=1234, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 # Feature toggles
+parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
 parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
 
@@ -72,6 +75,24 @@ args = parser.parse_args()
 ########################
 # Setup
 ########################
+if args.use_bn_qcw:
+    from MODELS.model_resnet_qcw_bn import build_resnet_qcw, get_last_qcw_layer
+
+if args.vanilla_pretrain:
+    print("Vanilla pretraining mode: Disabling Concept Whitening and related arguments.")
+    args.whitened_layers = []
+    args.batches_per_concept = None
+    args.cw_align_freq = None
+else:
+    try:
+        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]  # Convert to list of integers
+    except ValueError:
+        print("Invalid whitened_layers format. Should be a comma-separated list of integers.")
+        if args.whitened_layers == '':
+            args.whitened_layers = []
+            print("Setting whitened_layers to empty list. Please set vanilla_pretrain=True instead.")
+        exit(1)
+
 print("=========== ARGUMENTS ===========")
 for k,v in sorted(vars(args).items()):
     print(f"{k}: {v}")
@@ -133,6 +154,7 @@ def build_concept_loaders(args):
     
     The revised ConceptDataset physically crops or redacts images, so the model sees normal images.
     """
+    # If vanilla pretraining, no need for concept loaders
     concept_root = os.path.join(args.concept_dir, "concept_train")
     if not args.bboxes:
         args.bboxes = os.path.join(args.concept_dir, "bboxes.json")
@@ -202,65 +224,69 @@ def build_concept_loaders(args):
     # Return both the main loader and subconcept-specific loaders
     return concept_loaders, concept_dataset
 
-concept_loaders, concept_ds = build_concept_loaders(args)
-subconcept_loaders = concept_loaders[1:]
-
 print(f"[Data] #Main Train: {len(train_loader.dataset)}")
 print(f"[Data] #Val:        {len(val_loader.dataset)}")
 print(f"[Data] #Test:       {len(test_loader.dataset)}")
-print(f"[Data] #Concept:    {len(concept_loaders[0][1].dataset)}")
-print(f"[Data] #Subconcept Loaders: {len(concept_loaders) - 1}")
 
-# Print detailed information about the concept dataset
-print("\n===== CONCEPT DATASET DETAILS =====")
-print(f"Total number of samples: {len(concept_ds.samples)}")
-print(f"Total number of subconcepts: {concept_ds.get_num_subconcepts()}")
-print(f"Total number of high-level concepts: {concept_ds.get_num_high_level()}")
+concept_loaders, concept_ds, subconcept_loaders, subspaces = None, None, None, None # Initialize variables in case of vanilla pretraining
+# Build concept loaders if not vanilla pretraining
+if not args.vanilla_pretrain:
+    concept_loaders, concept_ds = build_concept_loaders(args)
+    subconcept_loaders = concept_loaders[1:]
 
-# Print subconcept names and their indices
-print("\nSubconcept names and indices:")
-for sc_name in concept_ds.get_subconcept_names():
-    sc_idx = concept_ds.sc2idx[sc_name]
-    print(f"  [{sc_idx}] {sc_name}")
+    print(f"[Data] #Concept:    {len(concept_loaders[0][1].dataset)}")
+    print(f"[Data] #Subconcept Loaders: {len(concept_loaders) - 1}")
 
-# Print high-level concept names and their subspaces
-print("\nHigh-level concepts and their subconcept indices:")
-for hl_name in concept_ds.get_hl_names():
-    subspace = concept_ds.subspace_mapping.get(hl_name, [])
-    print(f"  {hl_name}: {subspace}")
+    # Print detailed information about the concept dataset
+    print("\n===== CONCEPT DATASET DETAILS =====")
+    print(f"Total number of samples: {len(concept_ds.samples)}")
+    print(f"Total number of subconcepts: {concept_ds.get_num_subconcepts()}")
+    print(f"Total number of high-level concepts: {concept_ds.get_num_high_level()}")
 
-subconcept_loaders = sorted(subconcept_loaders, key=lambda x: x[0])
-print("\nSubconcept-specific loaders:")
-for sc_label, loader in subconcept_loaders:
-    sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
-    print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
+    # Print subconcept names and their indices
+    print("\nSubconcept names and indices:")
+    for sc_name in concept_ds.get_subconcept_names():
+        sc_idx = concept_ds.sc2idx[sc_name]
+        print(f"  [{sc_idx}] {sc_name}")
 
-random.shuffle(subconcept_loaders)
+    # Print high-level concept names and their subspaces
+    print("\nHigh-level concepts and their subconcept indices:")
+    for hl_name in concept_ds.get_hl_names():
+        subspace = concept_ds.subspace_mapping.get(hl_name, [])
+        print(f"  {hl_name}: {subspace}")
 
-print("\nShuffled Subconcept-specific loaders:")
-for sc_label, loader in subconcept_loaders:
-    sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
-    print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
+    subconcept_loaders = sorted(subconcept_loaders, key=lambda x: x[0])
+    print("\nSubconcept-specific loaders:")
+    for sc_label, loader in subconcept_loaders:
+        sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
+        print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
 
-########################
-# Build QCW Model
-########################
-if not args.disable_subspaces: # this logic is not fleshed out yet
-    subspaces = concept_ds.subspace_mapping  # e.g. { "wing": [...], "beak": [...], ... }
-else:
-    # lumps each HL concept into dimension [0], or each concept => single axis
-    subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
+    random.shuffle(subconcept_loaders)
+
+    print("\nShuffled Subconcept-specific loaders:")
+    for sc_label, loader in subconcept_loaders:
+        sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
+        print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
+
+    ########################
+    # Build QCW Model
+    ########################
+    if not args.disable_subspaces: # this logic is not fleshed out yet
+        subspaces = concept_ds.subspace_mapping  # e.g. { "wing": [...], "beak": [...], ... }
+    else:
+        # lumps each HL concept into dimension [0], or each concept => single axis
+        subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
 
 model = build_resnet_qcw(
     num_classes=NUM_CLASSES,
     depth=args.depth,
-    whitened_layers=[int(x) for x in args.whitened_layers.split(",")],
+    whitened_layers=args.whitened_layers,
     act_mode=args.act_mode,
     subspaces=subspaces,
     use_subspace=(not args.disable_subspaces), # this logic is not fleshed out yet
     use_free=args.use_free, # doesn't do anything
     pretrained_model=None,
-    vanilla_pretrain=True
+    vanilla_pretrain=args.vanilla_pretrain
 )
 
 ########################
@@ -393,29 +419,31 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         top5.update(prec5, imgs.size(0))
 
         # Concept alignment every N batches using subconcept-specific loaders
-        if (i + 1) % args.cw_align_freq == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
+        if args.cw_align_freq is not None and (i + 1) % args.cw_align_freq == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
             # Skip the first loader (which is the main loader with all concepts)
             # use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds, args.cw_align_batch)
+            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds, args.batches_per_concept)
             
             global_top1 = alignment_metrics['global_top1']
             subspace_top1 = alignment_metrics['subspace_top1']
             global_top5 = alignment_metrics['global_top5']
             
-            alignment_score.update(subspace_top1)
+            alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
             
             writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
             writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
 
-        pbar.set_postfix({"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", 
-                          "Top5": f"{top5.avg:.2f}", "ConceptAlignment": f"{alignment_score.avg:.2f}"})
+        postfix_dict = {"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", "Top5": f"{top5.avg:.2f}"}
+        if not args.vanilla_pretrain:
+            postfix_dict["Alignment"] = f"{alignment_score.avg:.2f}"
+        pbar.set_postfix(postfix_dict)
 
         writer.add_scalar("Train/Loss", losses.val, iteration)
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept):
+def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_concept):
     """
     Aligns concepts by accumulating gradients and calculates multiple alignment metrics:
     
@@ -455,7 +483,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
             model.module.change_mode(sc_label)
             
             # Process additional batches for this subconcept (up to batch_per_concept)
-            for batch_idx in range(batch_per_concept):
+            for batch_idx in range(batches_per_concept):
                 try:
                     batch_data = next(loader_iter, None)
                     if batch_data is None:
@@ -510,7 +538,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept
             subspace = subspace_mapping.get(hl, [])
 
             # Process all batches for this subconcept (starting with the first one)
-            for batch_idx in range(batch_per_concept):
+            for batch_idx in range(batches_per_concept):
                 try:
                     batch_data = next(loader_iter, None)
                     if batch_data is None or len(batch_data) < 3 or not len(batch_data[0]):
