@@ -56,9 +56,10 @@ parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rat
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
 # CW Training hyperparams
-parser.add_argument("--use_bn_qcw", action="store_true", help="Enable Quantized Concept Whitening (QCW) on BN layers inside the ResNet Block rather than outside.")
 parser.add_argument("--batches_per_concept", type=int, default=1, help="Number of batches per subconcept for each alignment step.")
 parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in mini-batches) we do concept alignment.")
+parser.add_argument("--use_bn_qcw", action="store_true",
+                    help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
@@ -304,7 +305,7 @@ def maybe_resume_checkpoint(model, optimizer, args):
         return start_epoch, best_prec
 
     print(f"[Checkpoint] Resuming from {args.resume}")
-    ckpt = torch.load(args.resume, map_location="cpu")
+    ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
 
     raw_sd = ckpt.get("state_dict", ckpt)  # either the 'state_dict' sub-dict or the entire ckpt
 

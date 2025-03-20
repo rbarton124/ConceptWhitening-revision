@@ -111,7 +111,7 @@ class ResNetQCW(nn.Module):
         out = self.backbone.fc(out)
         return out
 
-def build_resnet_qcw(num_classes=NUM_CLASSES, depth=18, whitened_layers=None, act_mode="pool_max",
+def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max",
                      subspaces=None, use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=False):
     model = ResNetQCW(num_classes=num_classes, depth=depth, whitened_layers=whitened_layers,
                       act_mode=act_mode, subspaces=subspaces, use_subspace=use_subspace,
