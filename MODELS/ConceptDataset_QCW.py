@@ -2,7 +2,9 @@ import os
 import json
 from PIL import Image, ImageDraw
 import torch
+import numpy as np
 from torch.utils.data import Dataset
+from PIL import ImageFilter
 
 class ConceptDataset(Dataset):
     """
@@ -125,19 +127,30 @@ class ConceptDataset(Dataset):
             if x2_cl > x1_cl and y2_cl > y1_cl:
                 img = img.crop((x1_cl, y1_cl, x2_cl, y2_cl))
             # else if invalid, we skip or let it continue
-        elif self.crop_mode == "redact":
-            # black out everything outside the bounding box
-            # for simplicity, let's define a quick approach:
+
+        elif self.crop_mode == "blur":
+            width, height = img.size
+            min_dim = min(width, height)
+            blur_radius = max(3,int(min_dim * 0.15))
+            blurred_img = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+            box_region = img.crop((x1, y1, x2, y2))
+            blurred_img.paste(box_region, (int(x1), int(y1)))
+            img = blurred_img
+
+        elif self.crop_mode.startswith("redact"):
+            if self.crop_mode == "redact_av": # needs more testing. sometimes images look weird.
+                np_img = np.array(img.convert("RGB"))
+                mean_color = np_img.reshape(-1, 3).mean(axis=0)
+                fill_color = tuple(int(c) for c in mean_color)
+            else:
+                fill_color = (0, 0, 0)
+
             draw = ImageDraw.Draw(img)
-            # top region
-            draw.rectangle([0,0, img.width, y1], fill=(0,0,0))
-            # bottom region
-            draw.rectangle([0, y2, img.width, img.height], fill=(0,0,0))
-            # left region
-            draw.rectangle([0, y1, x1, y2], fill=(0,0,0))
-            # right region
-            draw.rectangle([x2, y1, img.width, y2], fill=(0,0,0))
-            # now the box area is left as is
+            draw.rectangle([0, 0, img.width, y1], fill=fill_color)
+            draw.rectangle([0, y2, img.width, img.height], fill=fill_color)
+            draw.rectangle([0, y1, x1, y2], fill=fill_color)
+            draw.rectangle([x2, y1, img.width, y2], fill=fill_color)
+
         # else "none", do nothing
 
         # Now apply transforms if any

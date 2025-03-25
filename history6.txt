@@ -1,0 +1,3064 @@
+    1  ls -a
+    2  clear
+    3  ls -a
+    4  clear
+    5  python split_val_set.py ../DataSets/cats_real10000/ ../Datasets/cat2kat10000 2000
+    6  clear
+    7  python split_val_set.py ../DataSets/cats_real10000/ ../Datasets/cat2kat10000 2000 --postfix _A
+    8  python split_val_set.py ../DataSets/cats_real10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+    9  clear
+   10  python split_val_set.py ../DataSets/cats_real10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+   11  python split_val_set.py ../DataSets/cats_fake10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+   12  clear
+   13  python split_val_set.py ../DataSets/cats_real10000/ ../DataSets/cat2kat10000 2000 --postfix _A
+   14  python split_val_set.py ../DataSets/cats_fake10000/ ../DataSets/cat2kat10000 2000 --postfix _B
+   15  cd ..
+   16  ls -a
+   17  clear
+   18  sbatch SlurmScripts/TrainCat2Kat10000.sh
+   19  tail -f logs/RunCats10000Training_5373894.out
+   20  clear
+   21  ls -a
+   22  tail -f logs/RunCats10000Training_5373894.out
+   23  ls -a
+   24  cd WorkFolder/ECE663_Final/
+   25  clear
+   26  ls -a
+   27  real path ../../logs/
+   28  realpath ../../logs/
+   29  clear
+   30  ln -s /usr/project/xtmp/rnb23/663Proj/logs /tmp/logs_sym_link
+   31  mv logs/RunCats10000Training_5373894.out ../../logs/
+   32  ls -a
+   33  rm -rf logs
+   34  ln -s /usr/project/xtmp/rnb23/663Proj/logs logs
+   35  mv ../../logs/RunCats10000Training_5373894.out 
+   36  mv ../../logs/RunCats10000Training_5373894.out .
+   37  mv RunCats10000Training_5373894.out logs
+   38  clear
+   39  tail -f logs/RunCats10000Training_5373894.out
+   40  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+   41  clear
+   42  tail -f logs/RunCats10000Training_5373894.out
+   43  clear
+   44  clear
+   45  cd ~
+   46  ls -a
+   47  code
+   48  cat .python_history
+   49  vim .my-bashrc
+   50  clear
+   51  vim .my-bashrc
+   52  vim .my-bashrc
+   53  HISTSIZE
+   54  echo $HISTSIZE
+   55  echo $HISTFILESIZE
+   56  clear
+   57  history>history3.txt
+   58  vim history3.txt 
+   59  clear
+   60  clear
+   61  clear
+   62  ls -a
+   63  rm history3.txt 
+   64  clear
+   65  clear
+   66  tail -n +1 -f logs/RunCats10000Training_5373894.out
+   67  fack
+   68  facl
+   69  setfacl
+   70  groups
+   71  clear
+   72  ls -a
+   73  cd ..
+   74  ls -a
+   75  ls -ld 663Proj
+   76  groups
+   77  ls -ld 663Proj/logs/
+   78  groups
+   79  groups cjb131
+   80  groups rnb23
+   81  clear
+   82  clear
+   83  realpath .
+   84  ls -a
+   85  cd 663
+   86  realpath 663Proj/
+   87  getfacl /usr/project/xtmp/rnb23/663Proj
+   88  getfacl /usr/project/xtmp/rnb23/663Proj/logs
+   89  clear
+   90  setfacl -R -m u::rwx,g::rwx,o::rwx /usr/project/xtmp/rnb23/663Proj/logs
+   91  setfacl -R -m d:u::rwx,d:g::rwx,d:o::rwx /usr/project/xtmp/rnb23/663Proj/logs
+   92  df -T /usr/project/xtmp/rnb23/663Proj/logs
+   93  clear
+   94  tail -n +1 -f logs/RunCats10000Training_5373894.out
+   95  clear
+   96  ls -a
+   97  cd 663Proj/
+   98  clear
+   99  tail -n +1 -f logs/RunCats10000Training_5373894.out
+  100  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  101  /home/users/rnb23/xtmp/miniconda3/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/places365setup.py
+  102  ls -a
+  103  cd ConceptWhitening/
+  104  git clone https://github.com/IslinaS/ConceptWhitening.git
+  105  clear
+  106  ls -a
+  107  cd ConceptWhitening/
+  108  ls -a
+  109  conda env create -f environment.yaml 
+  110  clear
+  111  conda enve remove --name CW
+  112  conda env remove --name CW
+  113  conda env create -f environment.yaml 
+  114  clear
+  115  srun
+  116  srun --nodes=1 --ntasks-per-node=1  --partition=compsci-gpu --gres=gpu:1 --time=01:00:00 --pty bash -i
+  117  srun --nodes=1 --ntasks-per-node=1  --partition=compsci-gpu --gres=gpu:1 --time=01:00:00 --pty bash -i
+  118  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  119  exit
+  120  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  121  cd data
+  122  ls -a
+  123  cd ConceptWhitening/ConceptWhitening/data/
+  124  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  125  install ipykernel
+  126  conda install ipykernel
+  127  conda install ipykernel
+  128  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  129  clear
+  130  ls -a
+  131  cd ConceptWhitening/ConceptWhitening/
+  132  clear
+  133  cd ConceptWhitening/ConceptWhitening/
+  134  conda activate CW
+  135  conda install -n CW ipykernel --update-deps --force-reinstall
+  136  ls -a
+  137  mv data/coco_dataset/annotations/annotations/ data/coco_dataset/annotations/
+  138  mv data/coco_dataset/annotations/annotations data/coco_dataset/annotations
+  139  mv data/coco_dataset/annotations/annotations data/coco_dataset/annotations
+  140  clear
+  141  mv data/coco_dataset/annotations/annotations data/coco_dataset/annotations
+  142  mv data/coco_dataset/annotations/annotations data/coco_dataset/
+  143  mv -r data/coco_dataset/annotations/annotations data/coco_dataset/
+  144  mv -r data/coco_dataset/annotations/annotations /data/coco_dataset/
+  145  mv -r data/coco_dataset/annotations/annotations data/coco_dataset/
+  146  mv -r data/coco_dataset/annotations/annotations/ data/coco_dataset/
+  147  mv data/coco_dataset/annotations/annotations/ data/coco_dataset/
+  148  clear
+  149  ls -a
+  150  cd data
+  151  exit
+  152  /home/users/rnb23/xtmp/miniconda3/envs/CW/bin/python /home/users/rnb23/xtmp/ConceptWhitening/ConceptWhitening/data/CocoUsage.py
+  153  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  154  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  155  git status
+  156  clear
+  157  git fetch origin
+  158  cd ConceptWhitening/ConceptWhitening/
+  159  git fetch origin
+  160  clear
+  161  ls -a
+  162  git status
+  163  git add .
+  164  git commit -m "Added Coco dataset download and usage scripts and a conda environment file"
+  165  git push
+  166  git fetch origin
+  167  git push
+  168  clear
+  169  git push
+  170  git fetch origin
+  171  git push
+  172  git push
+  173  clear
+  174  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  175  ls -a
+  176  cd data/
+  177  rm coco_dataset -r
+  178  git status
+  179  clear
+  180  ls -a
+  181  cd ..
+  182  clear
+  183  git status
+  184  git push
+  185  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  186  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  187  cd ConceptWhitening/ConceptWhitening/data/coco_dataset/images
+  188  clear
+  189  rm val2017/val2017.zip
+  190  rm val2017/val2017.zip
+  191  rm train2017/train2017.zip
+  192  rm ../annotations/annotations.zip
+  193  clear
+  194  git status
+  195  git add .
+  196  git status
+  197  cd ../../..
+  198  ls -a
+  199  git add .
+  200  git status
+  201  git commit -m "added Coco Dataset scripts, added conda environment file"
+  202  git fetch origin
+  203  git checkout
+  204  status
+  205  git status
+  206  git branch
+  207  git fetch origin
+  208  git branch
+  209  git branch -r
+  210  git branch -a
+  211  git checkout origcw
+  212  git status
+  213  git checkout origin main
+  214  git checkout origin/main
+  215  git checkout origcw
+  216  git branch -a
+  217  git fetch origin
+  218  git branch -a
+  219  git checkout origcw
+  220  git checkout origin/main
+  221  git branch -d origcw
+  222  git branch -D origcw
+  223  git checkout origin/origcw
+  224  clear
+  225  git status
+  226  git checkout main
+  227  git status
+  228  git checkout origcw
+  229  git status
+  230  clear
+  231  ls -a
+  232  cd ConceptWhitening/
+  233  cd ConceptWhitening/
+  234  cd data/
+  235  python CocoDownload.py 
+  236  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  237  conda activate CW
+  238  cd ConceptWhitening/
+  239  cd ConceptWhitening/
+  240  cd data/
+  241  clear
+  242  python MakeCocoDF.py 
+  243  cd ..
+  244  ls 0a
+  245  ls -a
+  246  clear
+  247  ls -a
+  248  git add .
+  249  git commit -m "Switched COCO dataframe to use absolute path"
+  250  git push
+  251  exit()
+  252  exit
+  253  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  254  clear
+  255  ls -a
+  256  cd ConceptWhitening/ConceptWhitening/
+  257  clear
+  258  git push
+  259  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  260  ls -a
+  261  cd ConceptWhitening/ConceptWhitening/
+  262  git status
+  263  git fetch origin
+  264  clear
+  265  git status
+  266  clear
+  267  /bin/python2 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.16.1-linux-x64/python_files/deactivate/bash/envVars.txt
+  268  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/deactivate/bash/envVars.txt
+  269  cd ~/usr/project/xtmp/cs_474_cv/ConceptWhitening/
+  270  cd ~/usr/project/xtmp/cs_474_cv/ConceptWhitening/
+  271  cd ~
+  272  ls -a
+  273  cd ~
+  274  ls -a
+  275  cd ../../../..
+  276  l s-a
+  277  ls -a
+  278  cd usr/project/xtmp/cs_474_cv/ConceptWhitening/
+  279  cd usr/project/xtmp/cs474_cv/ConceptWhitening/
+  280  ls -a
+  281  mkdir Russ
+  282  ls -a
+  283  rmdir RUss
+  284  rmd Russ
+  285  rm Russ
+  286  ls -a
+  287  rm Russ
+  288  rm -r Russ
+  289  clear
+  290  cd ..
+  291  ls -a
+  292   cd ~
+  293  ls -a
+  294  cd xtmp
+  295  ls -a
+  296  cd 663Proj/
+  297  ls -a
+  298  cd WorkFolder
+  299  ls -a
+  300  cd ECE663_Final/
+  301  ls -a
+  302  cd SlurmScripts/
+  303  nano TrainCat2Kat10000.sh
+  304  ls -a
+  305  cd Bproj/
+  306  git clone https://github.com/charlieberens/ECE663FinalProjectB.git
+  307  conda env create -name HiDDeN
+  308  conda env create -n HiDDeN
+  309  conda env create --name HiDDeN
+  310  conda eneate --name HiDDeN
+  311  conda
+  312  conda create --name hidden
+  313  conda activate hidden
+  314  python /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/printEnvVariablesToFile.py /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.20.0-linux-x64/python_files/deactivate/bash/envVars.txt
+  315  clear
+  316  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  317  conda env create --name HiDDeN
+  318  conda create --name HiDDeN
+  319  conda activate img2img-turbo
+  320  clear
+  321  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  322  conda install -c pytorch torchvision
+  323  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  324  pip install datasets
+  325  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  326  pip install git+https://github.com/openai/CLIP.git
+  327  ln -s /home/users/cjb131/school/SigningDemo/data data
+  328  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  329  python main.py new --data-dir ../data/midjourney/ -b 2 -e 300 --name baseline_64 --size 512 -m 32 --hash-mode screen --masking-args 1
+  330  clear
+  331  clear
+  332  exit
+  333  conda activate hidden
+  334  ls -a
+  335  cd ECE663FinalProjectB/
+  336  ls -a
+  337  conda remove --name hidden
+  338  conda deactivate
+  339  conda remove --name hidden --all
+  340  conda env create -f environment.yml 
+  341  conda activate
+  342  conda env list
+  343  conda activate img2img-turbo
+  344  clear
+  345  srun --nodes=1 --ntasks-per-node=1  --partition=compsci-gpu --gres=gpu:1 --time=01:00:00 --pty bash -i
+  346  srun --nodes=1 --ntasks-per-node=1  --partition=compsci --gres=gpu:1 --time=01:00:00 --pty bash -i
+  347  srun --nodes=1 --ntasks-per-node=1  --gres=gpu:1 --time=01:00:00 --pty bash -i
+  348  c;ear
+  349  conda deactivate
+  350  conda create --name taketwo
+  351  conda create -n new python=3.9
+  352  clear
+  353  conda activate HiDDeN
+  354  clear
+  355  clear
+  356  conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
+  357  clear
+  358  pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+  359  clear
+  360  conda activate new
+  361  conda deactivate
+  362  conda deactivate
+  363  conda activate new
+  364  clear
+  365  conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia -y
+  366  conda install -c conda-forge matplotlib tqdm numpy -y
+  367  clear
+  368  cd ECE663FinalProjectB/
+  369  ls -a
+  370  clear
+  371  ls -a
+  372  git fetch origin master
+  373  cd ECE663FinalProjectB/
+  374  git fetch origin master
+  375  git pull origin master
+  376  clear
+  377  ln -s /usr/xtmp/cjb131/output_images output_images
+  378  cd visualization/output_images/2
+  379  tree
+  380  tree -d 1
+  381  tree --help
+  382  tree -d
+  383  cd ..
+  384  tree -d
+  385  tree
+  386  tree -d
+  387  /usr/bin/python3 /home/users/rnb23/xtmp/663Proj/Bproj/ECE663FinalProjectB/CLIP/main.py
+  388  git pull origin main
+  389  cd ECE663FinalProjectB/
+  390  git fetch origin main
+  391  git fetch origin master
+  392  git pull origin master
+  393  git commit -m "visualization stuff"
+  394  git add .
+  395  git commit -m "visualization stuff"
+  396  git push
+  397  ls -a
+  398  rm -r ConceptWhitening/
+  399  rm -r ConceptWhitening/ --force
+  400  clear
+  401  git clone https://github.com/IslinaS/ConceptWhitening.git
+  402  git clone https://github.com/IslinaS/ConceptWhitening.git
+  403  clear
+  404  conda env list
+  405  conda env list
+  406  conda
+  407  which conda
+  408  conda deactivate
+  409  conda activate
+  410  conda deactivate
+  411  which conda
+  412  rm -rf /home/users/rnb23/xtmp/miniconda3/bin/conda
+  413  which conda
+  414  clear
+  415  rm -rf ~/.condarc ~/.conda ~/.continuum
+  416  clear
+  417  nano ~/.bashrc
+  418  clear
+  419  ls -a ~
+  420  nano ~/.my-bashrc
+  421  nano ~/.my-bashrc
+  422  clear
+  423  wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+  424  ls -a
+  425  rm Miniconda3
+  426  rm Miniconda3-latest-Linux-x86_64.sh 
+  427  clear
+  428  cd ~
+  429  ls -a
+  430  clear
+  431  cd xtmp
+  432  ls -a
+  433  rm miniconda3/
+  434  rm miniconda3/ -r
+  435  find miniconda3 -type f | wc -l
+  436  rm miniconda3/ -r
+  437  rm miniconda3/ -rv
+  438  find miniconda3 -type f -delete -v
+  439  ls -a
+  440  find miniconda3 -type f -delete
+  441  find miniconda3 -type f -exec echo Deleting: {} \; -delete
+  442  rm miniconda3/ -rv
+  443  clear
+  444  ls -a
+  445  clear
+  446  lear
+  447  clear
+  448  cd ..
+  449  clear
+  450  ls -a
+  451  clear
+  452  ls -a
+  453  cd ../../..
+  454  ls -a
+  455  cd xtmp
+  456  ls -a
+  457  nvidia-smi
+  458  clear
+  459  ls -a
+  460  cd ConceptWhitening
+  461  conda env create -f environment.yml 
+  462  clear
+  463  conda env create -f environment.yml 
+  464  ls -a
+  465  cd ..
+  466  ls -a
+  467  cd ..
+  468  ls -a
+  469  cd rnb23/
+  470  ls -a
+  471  clear
+  472  cLEAR
+  473  clear
+  474  ls -a
+  475  mkdir -p ./miniconda3
+  476  wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ./miniconda3/miniconda.sh
+  477  bash ./miniconda3/miniconda.sh -b -u -p ./miniconda3
+  478  rm ./miniconda3/miniconda.sh
+  479  export PATH="$(pwd)/miniconda3/bin:$PATH"
+  480  ls -a ~
+  481  echo 'export PATH="$(pwd)/miniconda3/bin:$PATH"' >> ~/.my-bashrc
+  482  source ~/.bashrc
+  483  conda --version
+  484  clear
+  485  conda
+  486  conda init --all
+  487  clear
+  488  conda conda create -n CW
+  489  conda env conda create -n CW
+  490  conda conda create --name CW
+  491  conda create -n CW
+  492  git fetch origin main
+  493  git fetch origin master
+  494  ls -a
+  495  cd ConceptWhitening/
+  496  cd ConceptWhitening
+  497  clear
+  498  git fetch origin main
+  499  git pull origin main
+  500  rm ../ConceptWhitening-old/ -rfv
+  501  clera
+  502  clear
+  503  conda env create -f environment.yml
+  504  clear
+  505  conda remove --help
+  506  conda remove CW --all
+  507  conda remove -n CW --all
+  508  ls -a
+  509  cd ConceptWhitening
+  510  conda remove --name CW --all
+  511  rm ../../miniconda3/envs/CW -rf
+  512  conda remove --name CW --all
+  513  rm ../../miniconda3/envs/.conda_envs_dir_test clear
+  514  clear
+  515  conda env create -f environment.yml 
+  516  cd ../..
+  517  ls -a
+  518  cd ../..
+  519  ls -a
+  520  cd ..
+  521  ls -a
+  522  nvidia-smi
+  523  clear
+  524  conda env create -f environment.yml
+  525  clear
+  526  conda env create -f environment.yml
+  527  clear
+  528  conda
+  529  clear
+  530  clear
+  531  clear
+  532  clear
+  533  conda create --name CW-old  python=3.11 
+  534  clear
+  535  conda activate CW-old
+  536  clear
+  537  conda install pytorch-cuda=12.1 pytorch cudatoolkit -c pytorch -c nvidia -y
+  538  clear
+  539  python download.py
+  540  conda install requests
+  541  clear
+  542  python download.py
+  543  conda install kaggle
+  544  clear
+  545  conda install kaggle
+  546  pip install kaggle
+  547  clear
+  548  python download.py
+  549  clear
+  550  python download.py
+  551  cd /home/users/rnb23/.config/
+  552  ls -a
+  553  cd kaggle/
+  554  ls -a
+  555  nano kaggle.json
+  556  cat kaggle.json 
+  557  clear
+  558  python download.py
+  559  conda activate CW-old
+  560  clear
+  561  python download.py
+  562  clear
+  563  python download.py
+  564  clear
+  565  python download.py
+  566  clear
+  567  squeue -u $USER
+  568  scontrol show job -d 8070155
+  569  htop
+  570  conda activate CW-old
+  571  conda deactivate
+  572  clear
+  573  conda env remove -n 'CW-old'
+  574  conda activate CW-old
+  575  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/
+  576  clear
+  577  clear
+  578  cd ConceptWhitening/
+  579  conda env create -f environment.yml
+  580  clear
+  581  conda env create -f environment.yml
+  582  [200~conda config --show channels
+  583  conda config --show channels
+  584  conda config --remove channels "conda-forge nvidia bioconda"
+  585  conda config --show-sources
+  586  conda config --remove channels "conda-forge nvidia bioconda "
+  587  clear
+  588  conda config --show-sources
+  589  cd /usr/xtmp/rnb23/miniconda3/.condarc
+  590  cd ~/usr/xtmp/rnb23/miniconda3/.condarc
+  591  cd ~/usr/xtmp/rnb23/miniconda3/
+  592  cd home
+  593  clear
+  594  ls -a
+  595  clear
+  596  conda config --show-sources
+  597  nano /home/users/rnb23/.conda/envs
+  598  cd /home/users/rnb23/.conda/envs
+  599  ls -a
+  600  cd ..
+  601  ls -a
+  602  cd ..
+  603  ls -a
+  604  cd xtm
+  605  cd xtmp
+  606  ls -a
+  607  cd miniconda3/
+  608  ls -a
+  609  nana .condarc
+  610  nano .condarc
+  611  clear
+  612  conda config --show-sources
+  613  conda config --show channels
+  614  conda clean --all
+  615  y
+  616  clear
+  617  conda config --show channels
+  618  conda config --remove-key channels
+  619  conda config --show-sources
+  620  env | grep -i conda
+  621  unset CONDA_CHANNELS
+  622  env | grep -i conda
+  623  clear
+  624  nano ~/.bashrc
+  625  nano ~/.my-bashrc 
+  626  clear
+  627  conda config --show channels
+  628  conda config --add channels conda-forge
+  629  conda config --add channels nvidia
+  630  conda config --add channels bioconda
+  631  conda config --show channels
+  632  clear
+  633  ls -a
+  634  conda env create -f environment.yml
+  635  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  636  clear
+  637  conda env create -f environment.yml
+  638  clear
+  639  ls  ~/ -a
+  640  nano ~/.bash_profile 
+  641  nano ~/.my-bash_profile 
+  642  grep -i "CONDA_CHANNELS" /etc/* /etc/bash* /etc/profile* 2>/dev/null
+  643  clear
+  644  grep -i "CONDA_CHANNELS" ~/.*
+  645  grep -ri "CONDA_CHANNELS" /etc/
+  646  clear
+  647  nano ~/.condarc
+  648  ls ~/.conda/env
+  649  ls ~/.conda/envs/ -a
+  650  nano ~/.condarc
+  651  nano ~/.zshrc 
+  652  ls ~/ -a
+  653  cd xtmp
+  654  ls ~/xtmp/ -a
+  655  ls ~/xtmp/miniconda3/ -a
+  656  nano ~/xtmp/miniconda3/.condarc
+  657  ls ~/.conda/ -a
+  658  clear
+  659  grep -i "CONDA_CHANNELS" ~/.*
+  660  grep -i "h" ~/.*
+  661  clear
+  662  grep -ri "CONDA_CHANNELS" /etc/
+  663  clear
+  664  conda config --show channels
+  665  unset CONDA_CHANNELS
+  666  conda config --show channels
+  667  conda env create -f environment.yml
+  668  clear
+  669  conda activate ConceptWhiteningOld
+  670  clear
+  671  ls -a
+  672  python download.py
+  673  clear
+  674  python3 cropping_images_COCO.py     -coco-path data/coco     -concept-path data/concepts
+  675  lscpu
+  676  nproc --all
+  677  clera
+  678  clear
+  679  ls -a
+  680  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  681  clear
+  682  ls checkpoints/ -a
+  683  clear
+  684  clear
+  685  nano ~/.my-bash_profile 
+  686  nano ~/.my-bashrc
+  687  conda config --show channels
+  688  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  689  clear
+  690  rm -rfv data/concepts/
+  691  clear
+  692  ls -a
+  693  clear
+  694  clear
+  695  python3 cropping_images_COCO.py -coco-path data/coco -concept-path data/concepts
+  696  conda activate ConceptWhiteningOld
+  697  clear
+  698  python3 cropping_images_COCO.py -coco-path data/coco -concept-path data/concepts
+  699  pip install tqdm
+  700  python3 cropping_images_COCO.py -coco-path data/coco -concept-path data/concepts
+  701  clear
+  702  ls -a
+  703  python3 train_places.py     --main_data data/places365     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  704  clear
+  705  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  706  clear
+  707  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  708  conda install opencv
+  709  unset CONDA_CHANNELS
+  710  conda install opencv
+  711  clear
+  712  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  713  conda install --force-reinstall opencv torchvision numpy
+  714  clear
+  715  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  716  clear
+  717  conda install --force-reinstall numpy<2
+  718  conda install --force-reinstall numpy<2
+  719  conda install --force-reinstall numpy<2
+  720  clear
+  721  conda install numpy=1.23.5
+  722  clear
+  723  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  724  conda deactivate
+  725  clear
+  726  conda env create -f environment.yml
+  727  conda activate CW-old
+  728  clear
+  729  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  730  conda activate CW-old
+  731  clear
+  732  conda activate CW-old
+  733  conda deactivate
+  734  clear
+  735  conda deactivate
+  736  conda activate
+  737  clear
+  738  conda activate CW-old
+  739  clear
+  740  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  741  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  742  clear
+  743  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  744  conda install tensorboard
+  745  clear
+  746  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  747  clear
+  748  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  749  clear
+  750  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  751  conda activate CW-old
+  752  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  753  clear
+  754  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  755  conda activate ConceptWhiteningOld
+  756  ls -a
+  757  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  758  clear
+  759  history > history.txt
+  760  clera
+  761  clear
+  762  nvidia-smi
+  763  clear
+  764  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  765  conda list
+  766  pip uninstall numpy
+  767  clear
+  768  conda list
+  769  clear
+  770  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  771  clear
+  772  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  773  clear
+  774  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  775  echo $PYTHONPATH
+  776  ls -la
+  777  conda list | grep numpy
+  778  conda install --force-reinstall "numpy<2"  # or a stable 1.x version
+  779  clear
+  780  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  781  python3 -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  782  clear
+  783  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  784  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  785  clear
+  786  python -c "import numpy; print('Numpy version:', numpy.__version__); print('Numpy path:', numpy.__file__);"
+  787  clear
+  788  conda info --envs
+  789  which python
+  790  echo $CONDA_DEFAULT_ENV
+  791  clear
+  792  conda deactivate
+  793  clear
+  794  nvidia-smi
+  795  clear
+  796  clear
+  797  tensorboard --logdir=runs
+  798  clear
+  799  tensorboard --logdir=runs
+  800  conda activate o
+  801  conda activate ConceptWhiteningOld
+  802  conda deactivate
+  803  conda activate CW-old
+  804  clear
+  805  tensorboard --logdir=runs
+  806  cd ConceptWhitening/oldCW/ConceptWhitening/
+  807  clear
+  808  conda activate CW-old
+  809  clear
+  810  tensorboard --logdir=runs
+  811  ls -a
+  812  clear
+  813  git init
+  814  rm .git -r
+  815  clear
+  816  tensorboard --logdir=runs
+  817  conda activate CW-old
+  818  clear
+  819  tensorboard --logdir=runs
+  820  clear
+  821  git init
+  822  ls -a
+  823  git add .
+  824  rm .git/ -r
+  825  ls -a
+  826  clear
+  827  rm .git -r
+  828  ls -a
+  829  git init
+  830  ls -a
+  831  git add .
+  832  git commit -m "Initial Commit"
+  833  git remote add origin https://github.com/rbarton124/ConceptWhitening-revision
+  834  git push -u origin master
+  835  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  836  clear
+  837  conda activate CW-old
+  838  clear
+  839  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  840  clera
+  841  clear
+  842  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  843  clear
+  844  ls -a
+  845  clear
+  846  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  847  clera
+  848  clear
+  849  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  850  clear
+  851  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  852  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  853  clear
+  854  conda activate CW-old
+  855  clear
+  856  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  857  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  858  conda activate CW-old
+  859  clear
+  860  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 8 --epochs 10 --batch-size 64     --lr 0.05
+  861  conda activate CW-old
+  862  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  863  clear
+  864  rm runs/ -r
+  865  clear
+  866  ls -a
+  867  clear
+  868  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  869  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  870  conda activate CW-old
+  871  clear
+  872  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  873  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  874  rm runs/ -r
+  875  clear
+  876  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  877  clear
+  878  ls -a
+  879  clear
+  880  conda activate CW-old
+  881  clear
+  882  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  883  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  884  conda activate CW-old
+  885  clear
+  886  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,airplane"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05
+  887  conda activate CW-old
+  888  tensorboard --logdir=runs
+  889  clear 
+  890  cd ConceptWhitening/
+  891  clear
+  892  ls -a
+  893  tensorboard --logdir=runs
+  894  clear
+  895  tensorboard --logdir=runs
+  896  /bin/python3 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.22.2-linux-x64/python_files/shell_exec.py /bin/python3 -m pip install -U tensorboard /tmp/tmp-2927873v4dYgxsaL55t.log
+  897  /bin/python3 /home/users/rnb23/.vscode-server/extensions/ms-python.python-2024.22.2-linux-x64/python_files/shell_exec.py /bin/python3 -m pip install -U torch-tb-profiler /tmp/tmp-2927873Bx3lIcPe21GS.log
+  898  clear
+  899  tensorboard --logdir=runs
+  900  clear
+  901  cd ConceptWhitening/
+  902  clear
+  903  tensorboard --logdir=runs
+  904  cd ConceptWhitening/
+  905  clear
+  906  tensorboard --logdir=runs
+  907  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  908  clear
+  909  conda activate CW-old
+  910  clear
+  911  clear
+  912  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  913  clear
+  914  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  915  clera
+  916  clear
+  917  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  918  clear
+  919  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  920  clear
+  921  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  922  clear
+  923  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  924  clear
+  925  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  926  clear
+  927  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  928  clear
+  929  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  930  clear
+  931  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  932  clear
+  933  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40 --epochs 10 --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  934  clear
+  935  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40  --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  936  ls -a
+  937  clear
+  938  tensorboard --logdir=runs
+  939  clear
+  940  tensorboard --logdir=runs
+  941  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  942  conda activate CW-old
+  943  clear
+  944  clear
+  945  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --epochs 10 --concepts "person,bed,airplane"     --prefix CW_TEST_PLACES --ngpu 1 --workers 40 --epochs 10 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  946  tensorboard --logdir=runs
+  947  clear
+  948  cp --help
+  949  clear
+  950  mv runs/CW_RESNET18_EXAMPLE_5_1738125318 run/
+  951  mv runs/CW_RESNET18_EXAMPLE_5_1738354974/ run/
+  952  rm -r runs/
+  953  claer
+  954  clear
+  955  tensorboard --logdir=runs
+  956  clear
+  957  rm runs/CW_RESNET18_EXAMPLE_5_1738354974/ -r
+  958  clear
+  959  clear
+  960  tensorboard --logdir=runs
+  961  clear
+  962  tensorboard --logdir=runs
+  963  clear
+  964  rm runs/CW_TEST_PLACES_5_1738370214/ -r
+  965  rm runs/CW_TEST_PLACES_5_1738370214 -r
+  966  rm runs/CW_TEST_PLACES_5_1738370214 -rf
+  967  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  968  conda activate CW-old
+  969  clear
+  970  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  971  clear
+  972  conda activate CW-old
+  973  clear
+  974  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40  --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  975  clear
+  976  python3 train_places.py     --main_data data/places365     --concept_data data/concepts     --arch resnet_cw     --depth 18     --whitened_layers 5     --concepts "person,bed,clock"     --prefix CW_RESNET18_EXAMPLE     --ngpu 1 --workers 40  --batch-size 64     --lr 0.05     --resume checkpoints/resnet18_places365.pth.tar
+  977  conda activate CW-old
+  978  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  979  clear
+  980  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 256 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  981  conda activate CW-old
+  982  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  983  clear
+  984  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  985  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  986  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+  987  conda activate CW-old
+  988  clear
+  989  python3 train_places.py --main_data data/places365 --concept_data data/concepts --arch resnet_cw --depth 18 --whitened_layers 5 --concepts "person,bed,clock" --prefix CW_RESNET18_EXAMPLE --ngpu 1 --workers 30 --batch-size 64 --lr 0.05 --resume checkpoints/resnet18_places365.pth.tar
+  990  clear
+  991  rm runs/CW_TEST_PLACES_5_1738370214 -r
+  992  clear
+  993  tensorboard --logdir=runs
+  994  clear
+  995  squeue -u $USER
+  996  git status
+  997  git checkout main
+  998  git checkout master
+  999  clera
+ 1000  clear
+ 1001  tensorboard --logdir=runs
+ 1002  clear
+ 1003  tensorboard --logdir=runs
+ 1004  clear
+ 1005  tensorboard --logdir=runs
+ 1006  clear
+ 1007  clear
+ 1008  tensorboard --logdir=runs
+ 1009  tensorboard --logdir=runs
+ 1010  clear
+ 1011  tensorboard --logdir=runs
+ 1012  conda activate CW-old
+ 1013  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1014  clear
+ 1015  python download_imagenet.py 
+ 1016  wget --no-check-certificate 'https://data.caltech.edu/records/65de6-vp158/files/CUB_200_2011.tgz?download=1' -O CUB_200_2011.tgz
+ 1017  tar -xzf CUB_200_2011.tgz
+ 1018  rm -rf CUB_200_2011
+ 1019  rm attributes.txt 
+ 1020  mv CUB_200_2011.tgz data/CUB/
+ 1021  tar -xzf CUB_200_2011.tgz
+ 1022  clear
+ 1023  ls -a
+ 1024  cd ..
+ 1025  ls -a
+ 1026  cd ..
+ 1027  ls -a
+ 1028  clear
+ 1029  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1030  clear
+ 1031  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1032  clear
+ 1033  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1034  rm data/CUB/concept_data/ -rf
+ 1035  rm data/CUB/main_data/ -rf
+ 1036  clear
+ 1037  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1038  rm data/CUB/concept_data/ -rf
+ 1039  rm data/CUB/main_data/ -rf
+ 1040  clear
+ 1041  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,right wing"
+ 1042  clear
+ 1043  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,belly,left wing,nape,crown"
+ 1044  conda activate CW-old
+ 1045  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1046  clear
+ 1047  rm data/CUB/main_data/ -rf
+ 1048  clear
+ 1049  rm data/CUB/concept_data/ -rf
+ 1050  clear
+ 1051  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --parts "back,beak,left wing,nape,crown"
+ 1052  rm data/CUB/concept_data/ -rf
+ 1053  rm data/CUB/main_data/ -rf
+ 1054  clear
+ 1055  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "has_wing_color::purple,has_bill_length::longer_than_head,has_belly_color::black" --mode "attributes" --draw_or_crop crop
+ 1056  clear
+ 1057  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "has_wing_color::purple,has_bill_length::longer_than_head,has_belly_color::black" --mode "attributes" --draw_or_crop crop
+ 1058  git status
+ 1059  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1060  clear
+ 1061  tensorboard --logdir=runs
+ 1062  clear
+ 1063  cd 
+ 1064  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1065  clear
+ 1066  tensorboard --logdir=runs
+ 1067  tensorboard --logdir=runs
+ 1068  clear
+ 1069  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1070  ls -a
+ 1071  clear
+ 1072  python testabbr.py 
+ 1073  clear
+ 1074  python testabbr.py 
+ 1075  clear
+ 1076  python testabbr.py 
+ 1077  clear
+ 1078  python testabbr.py
+ 1079  clear
+ 1080  python testabbr.py
+ 1081  clear
+ 1082  ls 0a
+ 1083  ls -a
+ 1084  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1085  ls -a
+ 1086  git add .
+ 1087  git status
+ 1088  git commit -m "Finally pushed a "Semi-Final" version"
+ 1089  git push
+ 1090  clear
+ 1091  cd xtmp/ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1092  ls -a
+ 1093  cd xtmp
+ 1094  ls -a
+ 1095  clear
+ 1096  cd ../..
+ 1097  ls -a
+ 1098  cd ..
+ 1099  ls -a
+ 1100  cd ..
+ 1101  ls -a
+ 1102  cd usr
+ 1103  ls -a
+ 1104  cd xtmp
+ 1105  ls -a
+ 1106  cd rnb23/
+ 1107  ls 0a
+ 1108  ls -a
+ 1109  mkdir ConceptWhitening
+ 1110  clear
+ 1111  ls -a
+ 1112  cd ..
+ 1113  cd ..
+ 1114  ls -a
+ 1115  cd project/
+ 1116  ls -a
+ 1117  cd newxtmp/
+ 1118  ls -a
+ 1119  cd rnb23/
+ 1120  ls -a
+ 1121  ls -a
+ 1122  cd ConceptWhitening/
+ 1123  ls -a
+ 1124  cd ..
+ 1125  ls -a
+ 1126  cd ..
+ 1127  ls -a
+ 1128  cd ..
+ 1129  ls -a
+ 1130  cd xtmp/
+ 1131  ls -a
+ 1132  cd rnb23/
+ 1133  ls -a
+ 1134  cd ConceptWhitening/
+ 1135  ls -a
+ 1136  cd ../..
+ 1137  ls -a
+ 1138  cd ..
+ 1139  ls -a
+ 1140  clear
+ 1141  ls -a
+ 1142  cd oldxtmp/
+ 1143  ls -a
+ 1144  cd rnb23/
+ 1145  ls -a
+ 1146  cd mini
+ 1147  cd miniconda3/
+ 1148  ls -a
+ 1149  cd envs/
+ 1150  ls 0-a
+ 1151  ls -a
+ 1152  clear
+ 1153  clear
+ 1154  ls -a
+ 1155  conda
+ 1156  cd xtmp
+ 1157  ls -a
+ 1158  cd ConceptWhitening/
+ 1159  ls -a
+ 1160  cd ..
+ 1161  ls -a
+ 1162  clear
+ 1163  curl -O https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh
+ 1164  clear
+ 1165  ls -a
+ 1166  bash ~/Anaconda3-2024.10-1-Linux-x86_64.sh
+ 1167  bash Anaconda3-2024.10-1-Linux-x86_64.sh
+ 1168  ls -a
+ 1169  cd xtmp
+ 1170  clear
+ 1171  ls -a
+ 1172  rm Anaconda3-2024.10-1-Linux-x86_64.sh 
+ 1173  rm c/
+ 1174  rm . -r
+ 1175  ls -a
+ 1176  rm . -rf
+ 1177  rm c^?^?^?^?^? -rf
+ 1178  ls -a
+ 1179  clear
+ 1180  ls -a
+ 1181  rm 'c'$'\177\177\177\177\177'/ -rf
+ 1182  ls -a
+ 1183  clear
+ 1184  curl -O https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh
+ 1185  bash Anaconda3-2024.10-1-Linux-x86_64.sh
+ 1186  cd xtmp/CW/ConceptWhitening-revision/
+ 1187  ls -a
+ 1188  clear
+ 1189  ls -a
+ 1190  cd ../../../..
+ 1191  ls -a
+ 1192  cd ..
+ 1193  cd ..
+ 1194  ls -a
+ 1195  cd usr/
+ 1196  ls -a
+ 1197  cd project/
+ 1198  ls -a
+ 1199  cd oldxtmp/
+ 1200  ls -a
+ 1201  cd rnb23/
+ 1202  ls -a
+ 1203  cd ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1204  ls -a
+ 1205  clear
+ 1206  ls -a
+ 1207  cd data
+ 1208  ls -a
+ 1209  cd coco/
+ 1210  ls -a
+ 1211  cd c
+ 1212  cd test2017/
+ 1213  ls -a
+ 1214  cd ../../../
+ 1215  ls =a
+ 1216  ls -a
+ 1217  cd usr/project/oldxtmp/rnb23/
+ 1218  ls -a
+ 1219  clear
+ 1220  cd ../../../usr/project/oldxtmp/rnb23/
+ 1221  ls -a
+ 1222  cd ConceptWhitening/ConceptWhitening/oldCW/ConceptWhitening/
+ 1223  clear
+ 1224  ls -a
+ 1225  cd data/CUB/
+ 1226  ls -a
+ 1227  cd main_data
+ 1228  ls -a
+ 1229  clear
+ 1230  ls -a
+ 1231  cd xtmp/CW/ConceptWhitening-revision/
+ 1232  ls -a
+ 1233  cd data
+ 1234  ls -a
+ 1235  tar -xvzf CUB_200_2011.tgz 
+ 1236  cd xtmp/CW/ConceptWhitening-revision/
+ 1237  cd data
+ 1238  rm -rfv CUB_200_2011 -rf
+ 1239  clear
+ 1240  ls -a
+ 1241  mkdir CUB
+ 1242  cd CUB/
+ 1243  tar -xvzf CUB_200_2011.tgz 
+ 1244  clear
+ 1245  clear
+ 1246  cd ../..
+ 1247  ls -a
+ 1248  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data_test --output_concept data/CUB/concept_data_test --concepts "has_wing_color::purple,has_bill_length::longer_than_head,has_belly_color::black" --mode "attributes" --draw_or_crop crop
+ 1249  clear
+ 1250  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "beak,wing" --mode "attributes" --draw_or_copy copy--mappings data/CUB/mappings.json
+ 1251  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings data/CUB/mappings.json
+ 1252  python dataset_scripts/prepare_CUB.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings 'data/CUB/mappings.json'
+ 1253  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_main data/CUB/main_data --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings 'data/CUB/mappings.json'
+ 1254  clear
+ 1255  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings 'data/CUB/mappings.json'
+ 1256  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings 'data/CUB/mappings.json'
+ 1257  clera
+ 1258  clear
+ 1259  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings 'data/CUB/mappings.json'
+ 1260  clear
+ 1261  ls -a
+ 1262  rm data/CUB/concept_data/ -r
+ 1263  c;ear
+ 1264  clear
+ 1265  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "beak,wing" --mappings 'data/CUB/mappings.json'
+ 1266  clear
+ 1267  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy
+ 1268  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy draw
+ 1269  clear
+ 1270  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy draw
+ 1271  cd xtmp/CW/ConceptWhitening-revision/
+ 1272  clear
+ 1273  rm data/CUB/concept_data_2/ -rf
+ 1274  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'crop'
+ 1275  cd xtmp/CW/ConceptWhitening-revision/
+ 1276  rm data/CUB/concept_data_2/ -rf
+ 1277  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'crop'
+ 1278  clear
+ 1279  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'crop'
+ 1280  clear
+ 1281  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw'
+ 1282  cd xtmp/CW/ConceptWhitening-revision/
+ 1283  clear
+ 1284  conda activate CW-old
+ 1285  clear
+ 1286  ls -a
+ 1287  rm data/CUB/concept_data_2/ -rf
+ 1288  clear
+ 1289  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw'
+ 1290  clear
+ 1291  cd xtmp/CW/ConceptWhitening-revision/
+ 1292  clear
+ 1293  rm data/CUB/concept_data_2/ -rf
+ 1294  clear
+ 1295  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1296  cd xtmp/CW/ConceptWhitening-revision/
+ 1297  rm data/CUB/concept_data_2/ -rf
+ 1298  clear
+ 1299  ls -a
+ 1300  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1301  clear
+ 1302  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1303  clera
+ 1304  clear
+ 1305  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1306  cd xtmp/CW/ConceptWhitening-revision/
+ 1307  clera
+ 1308  rm data/CUB/concept_data_2/ -rf
+ 1309  clear
+ 1310  conda activate CW-old
+ 1311  clear
+ 1312  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy
+ 1313  clear
+ 1314  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json'
+ 1315  conda 
+ 1316  clear
+ 1317  cd xtmp
+ 1318  clear
+ 1319  conda init
+ 1320  mkdir CW
+ 1321  ls -a
+ 1322  rm Anaconda3-2024.10-1-Linux-x86_64.sh 
+ 1323  rm ConceptWhitening/
+ 1324  rm ConceptWhitening/ -r
+ 1325  clear
+ 1326  cd CW/
+ 1327  clear
+ 1328  git pull https://github.com/rbarton124/ConceptWhitening-revision.git
+ 1329  git pull https://github.com/rbarton124/ConceptWhitening-revision.git
+ 1330  clear
+ 1331  git clone https://github.com/rbarton124/ConceptWhitening-revision.git
+ 1332  clear
+ 1333  ls -a
+ 1334  git clone https://github.com/IslinaS/ConceptWhitening.git
+ 1335  clear
+ 1336  cd ConceptWhitening-revision/
+ 1337  clear
+ 1338  ls -a
+ 1339  conda env create -f environment.yml
+ 1340  conda activate CW-old
+ 1341  clear
+ 1342  ls -a
+ 1343  mkdir data
+ 1344  clear
+ 1345  ls -a
+ 1346  cd data
+ 1347  python ../dataset_scripts/download.py
+ 1348  pip install kaggle
+ 1349  clear
+ 1350  python ../dataset_scripts/download.py
+ 1351  clear
+ 1352  clear
+ 1353  ls -a
+ 1354  cd ../../
+ 1355  ls -a
+ 1356  cd ConceptWhitening-revision/
+ 1357  mv checkpoints old-checkpoints
+ 1358  mv runs-old old-runs
+ 1359  clear
+ 1360  clear
+ 1361  ls -a
+ 1362  cd xtmp/CW/ConceptWhitening-revision/
+ 1363  clear
+ 1364  rm data/CUB/concept_data_2/ -rf
+ 1365  cd ConceptWhitening-revision/
+ 1366  clear
+ 1367  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy draw
+ 1368  ls -a
+ 1369  cd xtmp/CW/ConceptWhitening-revision/
+ 1370  clear
+ 1371  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy draw
+ 1372  clear
+ 1373  cd xtmp/CW/ConceptWhitening-revision/
+ 1374  rm data/CUB/concept_data_2/ -rf
+ 1375  clear
+ 1376  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json'
+ 1377  clear
+ 1378  clear
+ 1379  ls -a
+ 1380  clear
+ 1381  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_3 --concepts "nape,eye" --mappings 'data/CUB/mappings.json'
+ 1382  cd xtmp/CW/ConceptWhitening-revision/
+ 1383  rm data/CUB/concept_data/ -rf
+ 1384  rm data/CUB/concept_data_3/ -rf
+ 1385  clear
+ 1386  cd xtmp/CW/ConceptWhitening-revision/
+ 1387  clear
+ 1388  conda activate CW-old
+ 1389  clear
+ 1390  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_3 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_crop draw
+ 1391  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_3 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy draw
+ 1392  cd xtmp/CW/ConceptWhitening-revision/
+ 1393  rm data/CUB/concept_data_3/ -rf
+ 1394  clear
+ 1395  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_3 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw'
+ 1396  clear
+ 1397  cd xtmp/CW/ConceptWhitening-revision/
+ 1398  rm data/CUB/concept_data_3/ -rf
+ 1399  clear
+ 1400  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_3 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw'
+ 1401  cd xtmp/CW/ConceptWhitening-revision/
+ 1402  rm data/CUB/concept_data_3/ -rf
+ 1403  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1404  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1405  cd xtmp/CW/ConceptWhitening-revision/
+ 1406  rm data/CUB/concept_data_2/ -rf
+ 1407  cd xtmp/CW/ConceptWhitening-revision/
+ 1408  clear
+ 1409  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1410  cd xtmp/CW/ConceptWhitening-revision/
+ 1411  clear
+ 1412  conda activate CW-old
+ 1413  rm -r
+ 1414  rm data/CUB/concept_data_2/ -rf
+ 1415  rm data/CUB/concept_data/ -rf
+ 1416  clear
+ 1417  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' > output.txt
+ 1418  cd xtmp/CW/ConceptWhitening-revision/
+ 1419  clear
+ 1420  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_2 --concepts "nape,eye" --mappings 'data/CUB/mappings.json' --draw_or_copy 'draw' -v
+ 1421  cd xtmp/CW/ConceptWhitening-revision/
+ 1422  rm data/CUB/concept_data/ -rf
+ 1423  clear
+ 1424  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "nape,eye" --mappings 'data/CUB/mappings.json'
+ 1425  clear
+ 1426  ls -a
+ 1427  clear
+ 1428  ls -a
+ 1429  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 -- batch_size 64 --use_readaction
+ 1430  clear
+ 1431  conda activate CW-old
+ 1432  clear
+ 1433  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 -- batch_size 64 --use_readaction
+ 1434  tree -r 3
+ 1435  tree -d 3
+ 1436  tree
+ 1437  cp data/CUB/CUB_200_2011.tgz ../../../../../../../xtmp/rnb23/CW/ConceptWhitening-revision/data
+ 1438  cp -r runs/ ../../../../../../../xtmp/rnb23/CW/ConceptWhitening-revision/
+ 1439  cp -r checkpoints/ ../../../../../../../xtmp/rnb23/CW/ConceptWhitening-revision/
+ 1440  cd xtmp/CW/ConceptWhitening-revision/
+ 1441  conda activate CW-old
+ 1442  clear
+ 1443  tree --help
+ 1444  tree -L 3
+ 1445  clear
+ 1446  touch MODELS/__init__.py
+ 1447  clear
+ 1448  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 -- batch_size 64 --use_readaction
+ 1449  clear
+ 1450  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 -- batch_size 64 --use_readaction
+ 1451  clear
+ 1452  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 -- batch_size 64 --use_redaction
+ 1453  clear
+ 1454  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1455  clear
+ 1456  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1457  clear
+ 1458  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1459  clear
+ 1460  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1461  clear
+ 1462  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1463  clear
+ 1464  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1465  clear
+ 1466  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1467  clear
+ 1468  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1469  clear
+ 1470  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1471  clear
+ 1472  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1473  clear
+ 1474  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1475  clear
+ 1476  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1477  clear
+ 1478  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1479  clear
+ 1480  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1481  clear
+ 1482  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1483  cd xtmp/CW/ConceptWhitening-revision/
+ 1484  conda activate CW-old
+ 1485  clear
+ 1486  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1487  clear
+ 1488  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1489  clear
+ 1490  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1491  clear
+ 1492  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1493  clear
+ 1494  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1495  clear
+ 1496  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1497  clear
+ 1498  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1499  clear
+ 1500  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1501  clear
+ 1502  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1503  clear
+ 1504  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1505  clear
+ 1506  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction --resume checkpoints/resnet18_imagenet.pth
+ 1507  clear
+ 1508  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1509  clear
+ 1510  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1511  clear
+ 1512  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1513  clear
+ 1514  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1515  clear
+ 1516  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1517  clear
+ 1518  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1519  clear
+ 1520  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1521  clear
+ 1522  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1523  clear
+ 1524  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1525  clear
+ 1526  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1527  cd xtmp/CW/ConceptWhitening-revision/
+ 1528  clear
+ 1529  conda activate CW-old
+ 1530  clear
+ 1531  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_test_1' --epochs 10 --batch_size 64 --use_redaction
+ 1532  clear
+ 1533  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_cropped' --epochs 10 --batch_size 64 --use_redaction
+ 1534  cd xtmp/CW/ConceptWhitening-revision/
+ 1535  rm data/CUB/concept_data_2/ -rf
+ 1536  clear
+ 1537  ls -a
+ 1538  cd data/CUB/concept_data/
+ 1539  cd concept_train
+ 1540  ls -a
+ 1541  cd eye
+ 1542  rm -rfv has_eye_color\:\:brown/ has_eye_color\:\:buff/ has_eye_color\:\:grey/ has_eye_color\:\:olive/ has_eye_color\:\:orange/ has_eye_color\:\:pink/ has_eye_color\:\:purple/ has_eye_color\:\:rufous/ has_eye_color\:\:yellow/
+ 1543  cd ../../concept_val/eye/
+ 1544  rm -rfv has_eye_color\:\:brown/ has_eye_color\:\:buff/ has_eye_color\:\:grey/ has_eye_color\:\:olive/ has_eye_color\:\:orange/ has_eye_color\:\:pink/ has_eye_color\:\:purple/ has_eye_color\:\:rufous/ has_eye_color\:\:yellow/
+ 1545  clear
+ 1546  cd ../../concept_train/nape/
+ 1547  rm -rfv has_nape_color\:\:brown/ has_nape_color\:\:buff/ has_nape_color\:\:grey/ has_nape_color\:\:iridescent/ has_nape_color\:\:olive/ has_nape_color\:\:orange/ has_nape_color\:\:pink/ has_nape_color\:\:purple/ has_nape_color\:\:rufous/ has_nape_color\:\:yellow/
+ 1548  clear
+ 1549  cd ../../concept_val/nape/
+ 1550  rm -rfv has_nape_color\:\:brown/ has_nape_color\:\:buff/ has_nape_color\:\:grey/ has_nape_color\:\:iridescent/ has_nape_color\:\:olive/ has_nape_color\:\:orange/ has_nape_color\:\:pink/ has_nape_color\:\:purple/ has_nape_color\:\:rufous/ has_nape_color\:\:yellow/
+ 1551  clear
+ 1552  clear
+ 1553  ls -a
+ 1554  cd ..
+ 1555  cd ../../..
+ 1556  ls -a
+ 1557  cd ..
+ 1558  ls -a
+ 1559  clear
+ 1560  clear
+ 1561  cd xtmp/CW/ConceptWhitening-revision/
+ 1562  conda activate CW-old
+ 1563  clear
+ 1564  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_cropped' --epochs 50 --batch_size 64 --use_redaction
+ 1565  cd xtmp/CW/ConceptWhitening-revision/
+ 1566  rm -rfv runs/
+ 1567  clear
+ 1568  git checkout -b new-cw-test-implementation
+ 1569  git checkout -b new-cw-cropping
+ 1570  clear
+ 1571  tensorboard --logdir=runs
+ 1572  clear
+ 1573  clear
+ 1574  tensorboard --logdir=runs
+ 1575  cd xtmp/CW/ConceptWhitening-revision/
+ 1576  conda activate CW-old
+ 1577  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 100 --batch_size 64 --use_redaction
+ 1578  clear
+ 1579  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 100 --batch_size 64
+ 1580  clear
+ 1581  cd xtmp/CW/ConceptWhitening-revision/
+ 1582  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 100 --batch_size 64
+ 1583  clear
+ 1584  conda activate CW-old
+ 1585  clear
+ 1586  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 100 --batch_size 64
+ 1587  clear
+ 1588  tensorboard --logdir=runs
+ 1589  conda env create -f environment.yml
+ 1590  clear
+ 1591  cd xtmp/CW/ConceptWhitening-revision/
+ 1592  conda env create -f environment.yml
+ 1593  clear
+ 1594  conda env create -f environment.yml
+ 1595  conda activate CW-old
+ 1596  clear
+ 1597  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 100 --batch_size 64
+ 1598  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 200 --batch_size 64 --resume checkpoints/qcw_eye_nape_5_checkpoint.pth
+ 1599  clear
+ 1600  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_5' --epochs 200 --batch_size 128
+ 1601  tensorboard --logdir=runs
+ 1602  clear
+ 1603  tensorboard --logdir=runs
+ 1604  tensorboard --logdir=runs
+ 1605  clear
+ 1606  cd xtmp/CW/ConceptWhitening-revision/
+ 1607  clear
+ 1608  conda activate CW-old
+ 1609  clear
+ 1610  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_bs_256' --epochs 100 --batch_size 256
+ 1611  clear
+ 1612  conda activate CW-old
+ 1613  cd xtmp/CW/ConceptWhitening-revision/
+ 1614  clear
+ 1615  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_lr_0.05' --epochs 200 --batch_size 128 --lr 0.05
+ 1616  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_lr_0.05' --epochs 200 --batch_size 128 --lr 0.2
+ 1617  cd xtmp/CW/ConceptWhitening-revision/
+ 1618  conda activate CW-old
+ 1619  clear
+ 1620  cd xtmp/CW/ConceptWhitening-revision/
+ 1621  conda activate CW-old
+ 1622  clear
+ 1623  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_eye_nape_lr_0.2' --epochs 200 --batch_size 128 --lr 0.2
+ 1624  clear
+ 1625  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_1' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1626  clear
+ 1627  clear
+ 1628  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_1' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1629  clear
+ 1630  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_1' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1631  clear
+ 1632  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_1' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1633  clear
+ 1634  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_1' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1635  cd xtmp/CW/ConceptWhitening-revision/
+ 1636  conda activate CW-old
+ 1637  clear
+ 1638  clear
+ 1639  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1640  clear
+ 1641  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1642  clear
+ 1643  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1644  clear
+ 1645  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1646  clear
+ 1647  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1648  clear
+ 1649  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1650  cd xtmp/CW/ConceptWhitening-revision/
+ 1651  conda activate CW-old
+ 1652  clear
+ 1653  clear
+ 1654  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_3' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1655  cd xtmp/CW/ConceptWhitening-revision/
+ 1656  conda activate CW-old
+ 1657  clear
+ 1658  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_imagenet_eye_nape' --epochs 200 --batch_size 64 --lr 0.1 --resume checkpoints/resnet18_imagenet.pth
+ 1659  cd xtmp/CW/ConceptWhitening-revision/
+ 1660  conda activate CW-old
+ 1661  clear
+ 1662  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_test_2' --epochs 200 --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1663  conda activate CW-old
+ 1664  tensorboard --logdir=runs
+ 1665  cleasr
+ 1666  clear
+ 1667  rm runs/qcw_eye_nape_5_1741014615/ runs/qcw_eye_nape_5_1741031125/ runs/qcw_eye_nape_5_1741031195/ runs/qcw_eye_nape_bs_256_1742055410/ -rfv
+ 1668  clear
+ 1669  tensorboard --logdir=runs
+ 1670  claer
+ 1671  clear
+ 1672  tensorboard --logdir=runs
+ 1673  clear
+ 1674  tensorboard --logdir=runs --bind_all
+ 1675  tensorboard --logdir=runs --bind_all
+ 1676  clear
+ 1677  tensorboard --logdir=runs
+ 1678  cd  xtmp/CW/ConceptWhitening-revision/
+ 1679  cd  xtmp/CW/ConceptWhitening-revision/
+ 1680  clear
+ 1681  conda activate CW-old
+ 1682  clear
+ 1683  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_imagenet_eye_nape' --epochs 300  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_imagenet_eye_nape_checkpoint.pth 
+ 1684  cd  xtmp/CW/ConceptWhitening-revision/
+ 1685  cd  xtmp/CW/ConceptWhitening-revision/
+ 1686  ls -a
+ 1687  cd ..
+ 1688  clear
+ 1689  ls -a
+ 1690  clear
+ 1691  conda activate CW-old
+ 1692  clear
+ 1693  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_imagenet_eye_nape' --epochs 300  --batch_size 128 --lr 0.2
+ 1694  python /home/users/rnb23/.windsurf-server/extensions/ms-python.python-2025.2.0-universal/python_files/printEnvVariablesToFile.py /home/users/rnb23/.windsurf-server/extensions/ms-python.python-2025.2.0-universal/python_files/deactivate/bash/envVars.txt
+ 1695  nvidia-smi
+ 1696  clear
+ 1697  cd ..
+ 1698  cd rnb23
+ 1699  cd  xtmp/CW/ConceptWhitening-revision/
+ 1700  conda activate CW-old
+ 1701  clear
+ 1702  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_2' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1703  clear
+ 1704  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_2' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1705  clear
+ 1706  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_2' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1707  clear
+ 1708  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_2' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1709  clear
+ 1710  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_2' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1711  clear
+ 1712  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_2' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1713  clear
+ 1714  cd  xtmp/CW/ConceptWhitening-revision/
+ 1715  conda activate CW-old
+ 1716  clear
+ 1717  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_3' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1718  tensorboard --logdir=runs
+ 1719  nvidia-smi
+ 1720  clear
+ 1721  cd  xtmp/CW/ConceptWhitening-revision/
+ 1722  conda activate CW-old
+ 1723  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_4' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1724  tensorboard --logdir=runs
+ 1725  clear
+ 1726  cd ..
+ 1727  ls -a
+ 1728  cd rnb23/
+ 1729  ls -a
+ 1730  cd xtmp
+ 1731  cd CW/
+ 1732  cd ConceptWhitening_
+ 1733  cd ConceptWhitening-revision/
+ 1734  clear
+ 1735  conda activate CW-old
+ 1736  clear
+ 1737  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_resume_imagenet_eye_nape' --epochs 300  --batch_size 128 --lr 0.2 --resume checkpoints/qcw_imagenet_eye_nape_checkpoint.pth 
+ 1738  cd  xtmp/CW/ConceptWhitening-revision/
+ 1739  conda activate CW-old
+ 1740  clear
+ 1741  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_3' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1742  cd  xtmp/CW/ConceptWhitening-revision/
+ 1743  co
+ 1744  conda activate CW-old
+ 1745  clear
+ 1746  clear
+ 1747  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_5' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1748  cd  xtmp/CW/ConceptWhitening-revision/
+ 1749  ls -a
+ 1750  clear
+ 1751  tensorboard --logdir=runs
+ 1752  python /home/users/rnb23/.windsurf-server/extensions/ms-python.python-2025.2.0-universal/python_files/printEnvVariablesToFile.py /home/users/rnb23/.windsurf-server/extensions/ms-python.python-2025.2.0-universal/python_files/deactivate/bash/envVars.txt
+ 1753  clear
+ 1754  tensorboard --logdir=runs
+ 1755  clear
+ 1756  clear
+ 1757  tensorboard --logdir=runs
+ 1758  tensorboard --logdir=runs
+ 1759  clear
+ 1760  tensorboard --logdir=runs
+ 1761  clear
+ 1762  tensorboard --logdir=runs
+ 1763  tensorboard --logdir=runs
+ 1764  tensorboard --logdir=runs
+ 1765  cd  xtmp/CW/ConceptWhitening-revision/
+ 1766  conda activate CW-old
+ 1767  clear
+ 1768  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_revision_5' --epochs 100  --batch_size 128 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1769  cd  xtmp/CW/ConceptWhitening-revision/
+ 1770  conda activate CW-old
+ 1771  clear
+ 1772  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_imagenet_bs_256_CWB_15_2' --epochs 300  --batch_size 256 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1773  cd  xtmp/CW/ConceptWhitening-revision/
+ 1774  conda activate CW-old
+ 1775  clear
+ 1776  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_imagenet_bs_100_CWB_30_4' --epochs 300  --batch_size 100 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1777  cd  xtmp/CW/ConceptWhitening-revision/
+ 1778  conda activate CW-old
+ 1779  clear
+ 1780  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_256_CWB_10_2' --epochs 300  --batch_size 256 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1781  nvidia-smi
+ 1782  tensorboard --logdir=runs
+ 1783  clear
+ 1784  sinfo --Format=partition,nodes,state,gres:50
+ 1785  scontrol show nodes | grep -i gres
+ 1786  clear
+ 1787  sinfo -o "%P %N %G %t"
+ 1788  clear
+ 1789  tensorboard --logdir=runs
+ 1790  cd xtmp/CW/ConceptWhitening-revision/
+ 1791  conda activate CW-old
+ 1792  cd xtmp/CW/ConceptWhitening-revision/
+ 1793  conda activate CW-old
+ 1794  clear
+ 1795  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_256_CWB_10_2' --epochs 300  --batch_size 256 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1796  clear
+ 1797  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1798  cd xtmp/CW/ConceptWhitening-revision/
+ 1799  conda activate CW-old
+ 1800  clear
+ 1801  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1802  cd xtmp/CW/ConceptWhitening-revision/
+ 1803  conda activate CW-old
+ 1804  clear
+ 1805  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_imagenet_bs_64_CWB_40_4_WL_5_10_16' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1806  cd xtmp/CW/ConceptWhitening-revision/
+ 1807  ls -a
+ 1808  clear
+ 1809  conda activate CW-old
+ 1810  clear
+ 1811  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_18' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1812  clear
+ 1813  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_18' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1814  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_18' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1815  clear
+ 1816  cd xtmp/CW/ConceptWhitening-revision/
+ 1817  conda activate CW-old
+ 1818  clear
+ 1819  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1820  ls -a
+ 1821  clear
+ 1822  conda activate CW-old
+ 1823  clear
+ 1824  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8_nocrop' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1825  cd xtmp/CW/ConceptWhitening-revision/
+ 1826  conda activate CW-old
+ 1827  clear
+ 1828  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1829  cd xtmp/CW/ConceptWhitening-revision/
+ 1830  conda activate CW-old
+ 1831  clear
+ 1832  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1833  cd xtmp/CW/ConceptWhitening-revision/
+ 1834  conda activate CW-old
+ 1835  clear
+ 1836  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_5_6' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1837  cd xtmp/CW/ConceptWhitening-revision/
+ 1838  conda activate CW-old
+ 1839  clear
+ 1840  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1841  cd xtmp/CW/ConceptWhitening-revision/
+ 1842  conda activate CW-old
+ 1843  clear
+ 1844  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1845  clear
+ 1846  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1847  cd xtmp/CW/ConceptWhitening-revision/
+ 1848  conda activate CW-old
+ 1849  clear
+ 1850  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1851  cd xtmp/CW/ConceptWhitening-revision/
+ 1852  conda activate CW-old
+ 1853  clear
+ 1854  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1855  tensorboard --logdir=runs
+ 1856  clear
+ 1857  tensorboard --logdir=runs
+ 1858  cd xtmp/CW/ConceptWhitening-revision/
+ 1859  clear
+ 1860  ls -a
+ 1861  clear
+ 1862  rm -rfv concept_image_test/
+ 1863  clear
+ 1864  cd xtmp/CW/ConceptWhitening-revision/
+ 1865  clear
+ 1866  conda activate CW-old
+ 1867  clear
+ 1868  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1869  cd xtmp/CW/ConceptWhitening-revision/
+ 1870  conda activate CW-old
+ 1871  clear
+ 1872  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_5_6_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1873  cd xtmp/CW/ConceptWhitening-revision/
+ 1874  clear
+ 1875  conda activate CW-old
+ 1876  clear
+ 1877  history>history.txt
+ 1878  history>history2.txt
+ 1879  clear
+ 1880  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_4_5_6' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1881  clear
+ 1882  cd xtmp/CW/ConceptWhitening-revision/
+ 1883  clear
+ 1884  conda activate CW-old
+ 1885  clear
+ 1886  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_CWB_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1887  /bin/python3
+ 1888  clear
+ 1889  tensorboard --logdir=runs
+ 1890  clear
+ 1891  rm -rfv runs/qcw_en_9_bs_64_CWB_40_4_WL_*
+ 1892  rm -rfv runs/qcw_en_9_bs_64_CWB_40_4_WL_*
+ 1893  rm -rfv runs/qcw_en_9_bs_256_CWB_10_2_1742185672/
+ 1894  rm -rfv runs/qcw_en_9_bs_256_CWB_10_2_1742185672/
+ 1895  clear
+ 1896  rm -rfv runs/qcw_en_9_bs_256_CWB_10_2_1742185672/
+ 1897  rm -rfv runs/qcw_en_9_bs_64_CWB_40_4_1742185838/
+ 1898  clear
+ 1899  clear
+ 1900  tensorboard --logdir=runs
+ 1901  clear
+ 1902  clear
+ 1903  clear
+ 1904  cd xtmp/CW/ConceptWhitening-revision/
+ 1905  conda activate CW-old
+ 1906  clear
+ 1907  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2
+ 1908  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1909  cd xtmp/CW/ConceptWhitening-revision/
+ 1910  cd xtmp/CW/ConceptWhitening-revision/
+ 1911  clear
+ 1912  conda activate CW-old
+ 1913  celar
+ 1914  clear
+ 1915  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_en_9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1916  nvidia-smi
+ 1917  cd xtmp/CW/ConceptWhitening-revision/
+ 1918  conda activate CW-old
+ 1919  clear
+ 1920  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1921  clear
+ 1922  conda activate CW-old
+ 1923  cd xtmp/CW/ConceptWhitening-revision/
+ 1924  clear
+ 1925  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1926  cd xtmp/CW/ConceptWhitening-revision/
+ 1927  conda activate CW-old
+ 1928  clear
+ 1929  clear
+ 1930  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en_9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1931  cd xtmp/CW/ConceptWhitening-revision/
+ 1932  conda activate CW-old
+ 1933  clear
+ 1934  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1935  cd xtmp/CW/ConceptWhitening-revision/
+ 1936  conda activate CW-old
+ 1937  clear
+ 1938  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2
+ 1939  cd xtmp/CW/ConceptWhitening-revision/
+ 1940  conda activate CW-old
+ 1941  clear
+ 1942  clear
+ 1943  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1944  cd xtmp/CW/ConceptWhitening-revision/
+ 1945  conda activate CW-old
+ 1946  clear
+ 1947  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1948  clear
+ 1949  cd xtmp/CW/ConceptWhitening-revision/
+ 1950  conda activate CW-old
+ 1951  clear
+ 1952  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1953  cd xtmp/CW/ConceptWhitening-revision/
+ 1954  conda activate CW-old
+ 1955  clear
+ 1956  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 1957  cd xtmp/CW/ConceptWhitening-revision/
+ 1958  conda activate CW-old
+ 1959  clear
+ 1960  clear
+ 1961  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1962  cd xtmp/CW/ConceptWhitening-revision/
+ 1963  clear
+ 1964  cd xtmp/CW/ConceptWhitening-revision/
+ 1965  clear
+ 1966  ls -a
+ 1967  clear
+ 1968  rm -rfv runs/to-delete/
+ 1969  c;ear
+ 1970  clear
+ 1971  cd xtmp/CW/ConceptWhitening-revision/
+ 1972  conda activate CW-old
+ 1973  clear
+ 1974  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1975  clear
+ 1976  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1977  clear
+ 1978  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1979  cd xtmp/CW/ConceptWhitening-revision/
+ 1980  conda activate CW-old
+ 1981  celar
+ 1982  clear
+ 1983  clear
+ 1984  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth 
+ 1985  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1986  cd xtmp/CW/ConceptWhitening-revision/
+ 1987  conda activate CW-old
+ 1988  clear
+ 1989  cd xtmp/CW/ConceptWhitening-revision/
+ 1990  clear
+ 1991  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 1992  cd xtmp/CW/ConceptWhitening-revision/
+ 1993  conda activate CW-old
+ 1994  clear
+ 1995  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1996  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 1997  cd xtmp/CW/ConceptWhitening-revision/
+ 1998  conda activate CW-old
+ 1999  clear
+ 2000  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2001  cd xtmp/CW/ConceptWhitening-revision/
+ 2002  conda activate CW-old
+ 2003  clear
+ 2004  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2005  cd xtmp/CW/ConceptWhitening-revision/
+ 2006  conda activate CW-old
+ 2007  clear
+ 2008  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2009  cd xtmp/CW/ConceptWhitening-revision/
+ 2010  conda activate CW-old
+ 2011  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2012  clear
+ 2013  cd xtmp/CW/ConceptWhitening-revision/
+ 2014  conda activate CW-old
+ 2015  clear
+ 2016  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2017  cd xtmp/CW/ConceptWhitening-revision/
+ 2018  conda activate CW-old
+ 2019  clear
+ 2020  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2021  cd xtmp/CW/ConceptWhitening-revision/
+ 2022  conda activate CW-old
+ 2023  clear
+ 2024  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2025  cd xtmp/CW/ConceptWhitening-revision/
+ 2026  conda activate CW-old
+ 2027  cdlear
+ 2028  clear
+ 2029  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2030  clear
+ 2031  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2032  cd xtmp/CW/ConceptWhitening-revision/
+ 2033  clear
+ 2034  conda activate CW-old
+ 2035  clear
+ 2036  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2037  cd xtmp/CW/ConceptWhitening-revision/
+ 2038  conda activate CW-old
+ 2039  clear
+ 2040  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2041  clear
+ 2042  cd xtmp/CW/ConceptWhitening-revision/
+ 2043  ls -a
+ 2044  cd ..
+ 2045  ls -a
+ 2046  clear
+ 2047  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2048  cd xtmp/CW/ConceptWhitening-revision/
+ 2049  conda activate CW-old
+ 2050  clear
+ 2051  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 2052  cd xtmp/CW/ConceptWhitening-revision/
+ 2053  conda activate CW-old
+ 2054  clear
+ 2055  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_imagenet_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth 
+ 2056  cd xtmp/CW/ConceptWhitening-revision/
+ 2057  conda activate CW-old
+ 2058  clear
+ 2059  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2060  rm -rfv runs/runs_to_delete/
+ 2061  clear
+ 2062  cd xtmp/CW/ConceptWhitening-revision/
+ 2063  clear
+ 2064  conda activate CW-old
+ 2065  clear
+ 2066  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2067  cd xtmp/CW/ConceptWhitening-revision/
+ 2068  conda activate CW-old
+ 2069  clear
+ 2070  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2071  clear
+ 2072  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_imagenet_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 2073  cd xtmp/CW/ConceptWhitening-revision/
+ 2074  conda activate CW-old
+ 2075  clear
+ 2076  clear
+ 2077  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_imagenet_bs_64_40_4_WL_5_6_7_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 2078  conda activate CW-old
+ 2079  clear
+ 2080  ls -a
+ 2081  cd xtmp/CW/ConceptWhitening-revision/
+ 2082  clear
+ 2083  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2084  cd xtmp/CW/ConceptWhitening-revision/
+ 2085  conda activate CW-old
+ 2086  clear
+ 2087  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_imagenet_bs_64_40_4_WL_7' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 2088  cd xtmp/CW/ConceptWhitening-revision/
+ 2089  clear 
+ 2090  ls -a
+ 2091  clear
+ 2092  cd ..
+ 2093  clear
+ 2094  rm -rfv runs/fordeletion/
+ 2095  clear
+ 2096  cd xtmp/CW/ConceptWhitening-revision/
+ 2097  clear
+ 2098  conda activate CW-old
+ 2099  clear
+ 2100  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_imagenet_bs_64_40_4_WL_5678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 2101  cd xtmp/CW/ConceptWhitening-revision/
+ 2102  clear
+ 2103  conda activate CW-old
+ 2104  clear
+ 2105  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_imagenet_bs_64_40_4_WL_5678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/resnet18_imagenet.pth
+ 2106  cd xtmp/CW/ConceptWhitening-revision/
+ 2107  conda activate CW-old
+ 2108  lcear
+ 2109  clear
+ 2110  ls -a
+ 2111  cd ..
+ 2112  clera
+ 2113  clera
+ 2114  clear
+ 2115  clear
+ 2116  clear
+ 2117  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_278' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2118  cd xtmp/CW/ConceptWhitening-revision/
+ 2119  conda activate CW-old
+ 2120  clear
+ 2121  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_78' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2122  clear
+ 2123  cd xtmp/CW/ConceptWhitening-revision/
+ 2124  conda activate CW-old
+ 2125  clear
+ 2126  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_8' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2127  cd xtmp/CW/ConceptWhitening-revision/
+ 2128  conda activate CW-old
+ 2129  claer
+ 2130  clear
+ 2131  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2132  cd xtmp/CW/ConceptWhitening-revision/
+ 2133  conda activate CW-old
+ 2134  clear
+ 2135  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2136  clear
+ 2137  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2138  cd xtmp/CW/ConceptWhitening-revision/
+ 2139  conda activate CW-old
+ 2140  clear
+ 2141  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2142  clear
+ 2143  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2144  clear
+ 2145  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_4_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2146  clear
+ 2147  tensorboard --logdir=runs
+ 2148  cd xtmp/CW/ConceptWhitening-revision/
+ 2149  clear
+ 2150  conda
+ 2151  clear
+ 2152  cd ..
+ 2153  ls -a
+ 2154  clear
+ 2155  conda activate CW-old
+ 2156  cd xtmp/CW/ConceptWhitening-revision/
+ 2157  clear
+ 2158  rm -rfv runs/fordelete/
+ 2159  clear
+ 2160  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_2_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2161  clear
+ 2162  tensorboard --logdir=runs
+ 2163  clear
+ 2164  tensorboard --logdir=runs
+ 2165  cd ..
+ 2166  cd rnb23/
+ 2167  cd xtmp
+ 2168  cd CW/
+ 2169  cd concept_whitening_old/ConceptWhitening-revision/
+ 2170  clear
+ 2171  ls -a
+ 2172  clear
+ 2173  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300  --batch_size 64 --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth 
+ 2174  conda activate CW-old
+ 2175  clear
+ 2176  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300  --batch_size 64 --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth 
+ 2177  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300  --bs 128 --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth 
+ 2178  clear
+ 2179  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300   --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth 
+ 2180  cd concept_whitening_old/ConceptWhitening-revision/
+ 2181  cd xtmp/CW/
+ 2182  cd concept_whitening_old/ConceptWhitening-revision/
+ 2183  clear
+ 2184  conda activate CW-old
+ 2185  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300   --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth --whitened_layers "2,5,8"
+ 2186  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300   --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth --whitened_layers '6,7,8'
+ 2187  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/old_concept_data/ --main_data ../../ConceptWhitening-revision/data/CUB/old_main_data/ --concepts 'has_belly_color::black,has_bill_length::longer_than_head,has_wing_color::purple' --prefix 'ml_test' --epochs 300   --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth --whitened_layers '5'
+ 2188  cd xtmp/CW/
+ 2189  cd concept_whitening_old/ConceptWhitening-revision/
+ 2190  clear
+ 2191  conda activate CW-old
+ 2192  cd ../../ConceptWhitening-revision/
+ 2193  clear
+ 2194  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_2_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2195  cd ../../ConceptWhitening-revision/
+ 2196  clear
+ 2197  clear
+ 2198  cd xtmp/CW/ConceptWhitening-revision/
+ 2199  conda activate CW-old
+ 2200  celar
+ 2201  clear
+ 2202  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_2_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2203  clear
+ 2204  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_2_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2205  conda activate CW-old
+ 2206  cd xtmp/CW/ConceptWhitening-revision/
+ 2207  clear
+ 2208  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_2_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2209  cd xtmp/CW/ConceptWhitening-revision/
+ 2210  conda activate CW-old
+ 2211  py
+ 2212  clear
+ 2213  python train_qcw.py --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --concepts 'eye,nape' --prefix 'qcw_rev2_en9_bs_64_40_2_WL_678' --epochs 300  --batch_size 64 --lr 0.2 --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2214  cd xtmp/CW/ConceptWhitening-revision/
+ 2215  conda activate CW-old
+ 2216  clear
+ 2217  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2218  cd xtmp/CW/ConceptWhitening-revision/
+ 2219  conda activate CW-old
+ 2220  clear
+ 2221  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2222  cd xtmp/CW/ConceptWhitening-revision/
+ 2223  conda activate CW-old
+ 2224  clear
+ 2225  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2226  cd xtmp/CW/ConceptWhitening-revision/
+ 2227  conda activate CW-old
+ 2228  clear
+ 2229  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2230  clear
+ 2231  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2232  cd xtmp/CW/ConceptWhitening-revision/
+ 2233  conda activate CW-old
+ 2234  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2235  clear
+ 2236  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2237  cd concept_whitening_old/
+ 2238  clear
+ 2239  git clone https://github.com/rbarton124/ConceptWhitening-revision.git
+ 2240  clear
+ 2241  tensorboard --logdir=runs
+ 2242  git status
+ 2243  cd ConceptWhitening-revision/
+ 2244  git status
+ 2245  tensorboard --logdir=runs
+ 2246  clear
+ 2247  cd ../..
+ 2248  cd ConceptWhitening-revision/
+ 2249  clear
+ 2250  tensorboard --logdir=runs
+ 2251  conda activate CW-old
+ 2252  cd ConceptWhitening-revision/
+ 2253  cd xtmp/CW/ConceptWhitening-revision/
+ 2254  clear
+ 2255  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2256  cd xtmp/CW/ConceptWhitening-revision/
+ 2257  conda activate CW-old
+ 2258  clear
+ 2259  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2260  cd xtmp/CW/ConceptWhitening-revision/
+ 2261  conda activate CW-old
+ 2262  clear
+ 2263  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2264  cd xtmp/CW/ConceptWhitening-revision/
+ 2265  conda activate CW-old
+ 2266  celar
+ 2267  clera
+ 2268  clear
+ 2269  clear
+ 2270  cd xtmp/CW/ConceptWhitening-revision/
+ 2271  conda activate CW-old
+ 2272  clear
+ 2273  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2274  cd xtmp/CW/ConceptWhitening-revision/
+ 2275  conda activate CW-old
+ 2276  clear
+ 2277  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2278  cd xtmp/CW/ConceptWhitening-revision/
+ 2279  conda activate CW-old
+ 2280  clear
+ 2281  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2282  cd xtmp/CW/ConceptWhitening-revision/
+ 2283  conda activate CW-old
+ 2284  clear
+ 2285  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 8  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2286  cd xtmp/CW/ConceptWhitening-revision/
+ 2287  conda activate CW-old
+ 2288  clear
+ 2289  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 8  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2290  cd xtmp/CW/ConceptWhitening-revision/
+ 2291  conda activate CW-old
+ 2292  clear
+ 2293  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2294  cd xtmp/CW/ConceptWhitening-revision/
+ 2295  conda activate CW-old
+ 2296  clear
+ 2297  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2298  \clear
+ 2299  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2300  clear
+ 2301  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2302  conda activate CW-old
+ 2303  cd xtmp/CW/ConceptWhitening-revision/
+ 2304  clear
+ 2305  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2306  clear
+ 2307  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2308  tensorboard --logdir=runs
+ 2309  cd ConceptWhitening-revision/
+ 2310  clear
+ 2311  tensorboard --logdir=runs
+ 2312  cd xtmp/CW/ConceptWhitening-revision/
+ 2313  conda activate CW-old
+ 2314  clear
+ 2315  ls a-
+ 2316  ls -a
+ 2317  clear
+ 2318  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2319  cd xtmp/CW/ConceptWhitening-revision/
+ 2320  conda activate CW-old
+ 2321  clera
+ 2322  clear
+ 2323  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2324  clear
+ 2325  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2326  cd xtmp/CW/ConceptWhitening-revision/
+ 2327  conda activate CW-old
+ 2328  clear
+ 2329  rm -rfv clear
+ 2330  clear
+ 2331  rm -rfv delete/
+ 2332  clear
+ 2333  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2334  cd xtmp/CW/ConceptWhitening-revision/
+ 2335  cd ..
+ 2336  ls -a
+ 2337  clear
+ 2338  cd xtmp/CW/ConceptWhitening-revision/
+ 2339  clear
+ 2340  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2341  cd xtmp/CW/ConceptWhitening-revision/
+ 2342  clear
+ 2343  conda activate CW-old
+ 2344  clear
+ 2345  nvidia-smi
+ 2346  clear
+ 2347  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth --only_load_weights
+ 2348  clear
+ 2349  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth --only_load_weights
+ 2350  cd xtmp/CW/ConceptWhitening-revision/
+ 2351  conda activate CW-old
+ 2352  clear
+ 2353  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2354  tensorboard --logdir=runs
+ 2355  tensorboard --logdir=runs
+ 2356  clear
+ 2357  cd xtmp/CW/ConceptWhitening-revision/
+ 2358  conda activate CW-old
+ 2359  clear
+ 2360  ls -a
+ 2361  cd ..
+ 2362  clera
+ 2363  clear
+ 2364  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2365  cd ..
+ 2366  cd xtmp/CW/ConceptWhitening-revision/
+ 2367  ls -a
+ 2368  clear
+ 2369  conda activate CW-old
+ 2370  clear
+ 2371  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2372  cd xtmp/CW/ConceptWhitening-revision/
+ 2373  cd ..
+ 2374  conda activate CW-old
+ 2375  clear
+ 2376  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2377  tensorboard --logdir=runs
+ 2378  clear
+ 2379  git fetch
+ 2380  git status
+ 2381  git checkout main
+ 2382  git checkout master
+ 2383  git checkout new-cw-cropping
+ 2384  git checkout master
+ 2385  git pull origin master
+ 2386  clear
+ 2387  git checkout -b 'Russell'
+ 2388  clear
+ 2389  git checkout master
+ 2390  git checkout 'Russell'
+ 2391  clear
+ 2392  git pull origin master
+ 2393  clear
+ 2394  tree -L 2 -I ".ipynb_checkpoints|test.md|kaggle.json|old-runs2|old-runs|old_concept_data|old_main_data|CUB200_2011.tgz|Places|checkpoints|runs"
+ 2395  tree -L 1 -I ".ipynb_checkpoints|test.md|kaggle.json|old-runs2|old-runs|old_concept_data|old_main_data|CUB200_2011.tgz|Places"
+ 2396  tree -L 4 -I ".ipynb_checkpoints|test.md|kaggle.json|old-runs2|old-runs|old_concept_data|old_main_data|CUB200_2011.tgz|Places|checkpoints|runs"
+ 2397  clear
+ 2398  tree -L 4 -I ".ipynb_checkpoints|test.md|kaggle.json|old-runs2|old-runs|old_concept_data|old_main_data|CUB200_2011.tgz|Places|checkpoints|runs|__*"
+ 2399  tree -L 1 -I ".ipynb_checkpoints|test.md|kaggle.json|old-runs2|old-runs|old_concept_data|old_main_data|CUB200_2011.tgz|Places"
+ 2400  clear
+ 2401  tredata/CUB/main_data e -2 1 -I ".ipynb_checkpoint"
+ 2402  tree data/CUB/main_data e -2 1 -I ".ipynb_checkpoint"
+ 2403  tree data/CUB/main_data -L 2 -I ".ipynb_checkpoint"
+ 2404  tree data/CUB/main_data -L 1 -I ".ipynb_checkpoint"
+ 2405  tree data/CUB/ -L 1 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz"
+ 2406  tree data/CUB/ -L 2 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz"
+ 2407  tree data/CUB/ -L 1 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz"
+ 2408  tree data/CUB/ -L 3 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|main_data|mappings.json"
+ 2409  tree data/CUB/ -L 4 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|main_data|mappings.json"
+ 2410  tree data/CUB/ -L 4 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|main_data"
+ 2411  tree data/CUB/ -L 4 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|concept_data"
+ 2412  clear
+ 2413  tree data/CUB/ -L 2 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|concept_data"
+ 2414  tree data/CUB/ -L 3 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|concept_data"
+ 2415  tree data/CUB/ -L 2 -I ".ipynb_checkpoint|CUB_200_2011|old_concept_data|old_main_data|CUB_200_2011.tgz|concept_data"
+ 2416  git status
+ 2417  git checkout master
+ 2418  ls -a
+ 2419  cd ..
+ 2420  rm ConceptWhitening-revision/.git/
+ 2421  rm ConceptWhitening-revision/.git/ -rfv
+ 2422  clear
+ 2423  git clone https://github.com/rbarton124/ConceptWhitening-revision.git
+ 2424  mv ConceptWhitening-revision/ ConceptWhitening-revision2/
+ 2425  clear
+ 2426  git clone https://github.com/rbarton124/ConceptWhitening-revision.git
+ 2427  clear
+ 2428  mv ConceptWhitening-revision/. ConceptWhitening-revision2
+ 2429  mv ConceptWhitening-revision/. ConceptWhitening-revision2
+ 2430  clear
+ 2431  mv ConceptWhitening-revision/. ConceptWhitening-revision2
+ 2432  ls -a
+ 2433  lsof +D ConceptWhitening-revision
+ 2434  mv ConceptWhitening-revision/. ConceptWhitening-revision2
+ 2435  lsof +D ConceptWhitening-revision2
+ 2436  clear
+ 2437  rsync -av --progress ConceptWhitening-revision/ ConceptWhitening-revision2/
+ 2438  rm -rfv ConceptWhitening-revision
+ 2439  cd xtmp/CW/ConceptWhitening-revision/
+ 2440  conda activate CW-old
+ 2441  clear
+ 2442  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_rev2_en9_bs_64_40_1_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/qcw_eye_nape_9_checkpoint.pth
+ 2443  clear
+ 2444  cd xtmp/CW/ConceptWhitening-revision/
+ 2445  conda activate CW-old
+ 2446  clear
+ 2447  ls -a
+ 2448  wget --no-check-certificate 'https://data.caltech.edu/records/65de6-vp158/files/CUB_200_2011.tgz?download=1' -O CUB_200_2011.tgz
+ 2449  cd data/CUB/
+ 2450  clar
+ 2451  clear
+ 2452  tar -xzf CUB_200_2011.tgz
+ 2453  rm -rfv main_data/
+ 2454  clear
+ 2455  ls -a
+ 2456  cd ../..
+ 2457  ls -a
+ 2458  clear
+ 2459  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --concepts "nape,eye" --mappings 'data/CUB/mappings.json'
+ 2460  rm -rfv data/CUB/concept_data/
+ 2461  clear
+ 2462  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data --output_main data/CUB/main_data --concepts "nape,eye" --mappings 'data/CUB/mappings.json' -v
+ 2463  find . -type d -exec sh -c 'echo -n "{}: " && find "{}" -mindepth 1 | wc -l' \;
+ 2464  cd ../..
+ 2465  ls -a
+ 2466  cd users/rnb23/xtmp
+ 2467  cd CW/ConceptWhitening-revision/
+ 2468  clear
+ 2469  clear
+ 2470  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_3_WL_8'  --batches_per_concept 3  --whitened_layers '8'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2471  conda activate CW-old
+ 2472  clear
+ 2473  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_3_WL_8'  --batches_per_concept 3  --whitened_layers '8'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2474  conda activate CW-old
+ 2475  clear
+ 2476  clear
+ 2477  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_3_WL_7'  --batches_per_concept 3  --whitened_layers '7'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2478  cd xtmp/CW/ConceptWhitening-revision/
+ 2479  ls -a
+ 2480  cd ../../../..
+ 2481  ls -a
+ 2482  clear
+ 2483  cd ..
+ 2484  ls -a
+ 2485  clear
+ 2486  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_3_WL_7'  --batches_per_concept 3  --whitened_layers '7'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2487  cd xtmp/CW/ConceptWhitening-revision/
+ 2488  clear
+ 2489  lear
+ 2490  clear
+ 2491  clear
+ 2492  find data/CUB/concept_data/ -type d | while read dir; do echo "$(find "$dir" -mindepth 1 | wc -l) $dir"; done | sort -nr
+ 2493  clear
+ 2494  find data/CUB/concept_data/concept_train/ -type d | while read dir; do echo "$(find "$dir" -mindepth 1 | wc -l) $dir"; done | sort -nr
+ 2495  cd data/CUB/concept_data/concept_train/nape/
+ 2496  cd ../..
+ 2497  cd concept_train//eye/
+ 2498  ls -a
+ 2499  clear
+ 2500  rm -rfv has_eye_color\:\:brown/ has_eye_color\:\:buff/ has_eye_color\:\:grey/ has_eye_color\:\:olive/ has_eye_color\:\:orange/ has_eye_color\:\:pink/ has_eye_color\:\:purple/ has_eye_color\:\:rufous/ has_eye_color\:\:yellow/
+ 2501  cd ../../concept_val/eye/
+ 2502  rm -rfv has_eye_color\:\:brown/ has_eye_color\:\:buff/ has_eye_color\:\:grey/ has_eye_color\:\:olive/ has_eye_color\:\:orange/ has_eye_color\:\:pink/ has_eye_color\:\:purple/ has_eye_color\:\:rufous/ has_eye_color\:\:yellow/
+ 2503  cd ../../concept_train/nape/
+ 2504  rm -rfv has_nape_color\:\:brown/ has_nape_color\:\:buff/ has_nape_color\:\:grey/ has_nape_color\:\:iridescent/ has_nape_color\:\:olive/ has_nape_color\:\:orange/ has_nape_color\:\:pink/ has_nape_color\:\:purple/ has_nape_color\:\:rufous/ has_nape_color\:\:yellow/
+ 2505  cd ../../concept_val/nape/
+ 2506  rm -rfv has_nape_color\:\:brown/ has_nape_color\:\:buff/ has_nape_color\:\:grey/ has_nape_color\:\:iridescent/ has_nape_color\:\:olive/ has_nape_color\:\:orange/ has_nape_color\:\:pink/ has_nape_color\:\:purple/ has_nape_color\:\:rufous/ has_nape_color\:\:yellow/
+ 2507  clclear
+ 2508  clear
+ 2509  find data/CUB/concept_data/concept_train/ -type d | while read dir; do echo "$(find "$dir" -mindepth 1 | wc -l) $dir"; done | sort -nr
+ 2510  cd ../../..
+ 2511  ls -=a
+ 2512  ls -a
+ 2513  cd ../..
+ 2514  ls -a
+ 2515  clear
+ 2516  find data/CUB/concept_data/concept_train/ -type d | while read dir; do echo "$(find "$dir" -mindepth 1 | wc -l) $dir"; done | sort -nr
+ 2517  clear
+ 2518  conda activate CW-old
+ 2519  clear
+ 2520  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_40_3_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth 
+ 2521  clear
+ 2522  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_40_3_WL_5'  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth 
+ 2523  clear
+ 2524  cd xtmp/CW/ConceptWhitening-revision/
+ 2525  clear
+ 2526  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_3_WL_5'  --batches_per_concept 3  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2527  rm -rfv delete/
+ 2528  rm -rfv delete/
+ 2529  clear
+ 2530  cd xtmp/CW/ConceptWhitening-revision/
+ 2531  clear
+ 2532  conda activate CW-old
+ 2533  clear
+ 2534  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_bs_64_1_WL_5'  --batches_per_concept 1  --whitened_layers '5'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2535  git status
+ 2536  cd ConceptWhitening-revision2
+ 2537  ls -a
+ 2538  cd ConceptWhitening-revision/
+ 2539  clear
+ 2540  git status
+ 2541  clear
+ 2542  rm -rfv data/CUB/concept_data/ data/CUB/CUB_200_2011/
+ 2543  history>history.txt
+ 2544  clear
+ 2545  tensorboard --logdir=runs
+ 2546  cd xtmp/CW/ConceptWhitening-revision/
+ 2547  conda activate CW-old
+ 2548  clear
+ 2549  clear
+ 2550  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2551  clear
+ 2552  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2553  clear
+ 2554  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2555  clear
+ 2556  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2557  clear
+ 2558  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2559  clear
+ 2560  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2561  clear
+ 2562  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2563  clear
+ 2564  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2565  clear
+ 2566  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 2567  cd ..
+ 2568  ls -a
+ 2569  clear
+ 2570  mv concept_train/eye/* concept_train/nape
+ 2571  mv concept_val/eye/* concept_val/nape
+ 2572  clear
+ 2573  sed -i 's/\/eye\//\/nape\//g' bboxes.json 
+ 2574  clear
+ 2575  cp --help
+ 2576  clear
+ 2577  ls -a
+ 2578  cp -r concept_data/ concept_data_flat/
+ 2579  clear
+ 2580  cd ..
+ 2581  ls -a
+ 2582  cd ../..
+ 2583  ls -a
+ 2584  cd ConceptWhitening-revision/
+ 2585  clear
+ 2586  conda activate CW-old
+ 2587  clear
+ 2588  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data_flat/  --concepts 'eye,nape'  --prefix 'cw_imagenet_bs_64_1_WL_7'  --batches_per_concept 1  --whitened_layers '7'  --epochs 400  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth
+ 2589  clear
+ 2590  ls -a
+ 2591  cd xtmp/CW/ConceptWhitening-revision/
+ 2592  clear
+ 2593  clear
+ 2594  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_old  --concepts "nape,eye" --mappings 'data/CUB/mappings.json' -v
+ 2595  ls -a
+ 2596  cd ../../../../
+ 2597  ls -a
+ 2598  cd ..
+ 2599  ls -a
+ 2600  clear
+ 2601  history>history4.txt
+ 2602  clear
+ 2603  cd xtmp/CW/ConceptWhitening-revision/
+ 2604  conda activate CW-old
+ 2605  clear
+ 2606  rm -rfv data/CUB/concept_data_old/
+ 2607  clear
+ 2608  rm -rfv data/CUB/old_main_data/
+ 2609  rm -rfv data/CUB/old_concept_data/
+ 2610  clear
+ 2611  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_old  --concepts "nape,eye" --mappings 'data/CUB/mappings.json' -v --draw_or_copy 'crop'
+ 2612  clear
+ 2613  ls -a
+ 2614  clear
+ 2615  cd data
+ 2616  cd CUB/
+ 2617  cd concept_data_old/
+ 2618  ls -a
+ 2619  clear
+ 2620  cd concept_train/nape/
+ 2621  clear
+ 2622  ls -a
+ 2623  clear
+ 2624  rm -rfv has_nape_color\:\:brown/ has_nape_color\:\:buff/ has_nape_color\:\:grey/ has_nape_color\:\:iridescent/ has_nape_color\:\:olive/ has_nape_color\:\:orange/
+ 2625  rm -rfv has_nape_color\:\:pink/ has_nape_color\:\:purple/ has_nape_color\:\:rufous/ has_nape_color\:\:yellow/
+ 2626  cd ../../concept_val/nape/
+ 2627  rm -rfv has_nape_color\:\:brown/ has_nape_color\:\:buff/ has_nape_color\:\:grey/ has_nape_color\:\:iridescent/ has_nape_color\:\:olive/ has_nape_color\:\:orange/ has_nape_color\:\:pink/ has_nape_color\:\:purple/ has_nape_color\:\:rufous/ has_nape_color\:\:yellow/
+ 2628  cd ../..
+ 2629  ls -a
+ 2630  cd concept_train/eye/
+ 2631  clear
+ 2632  rm -rfv has_eye_color\:\:brown/ has_eye_color\:\:buff/ has_eye_color\:\:grey/ has_eye_color\:\:olive/ has_eye_color\:\:orange/ has_eye_color\:\:pink/ has_eye_color\:\:purple/ has_eye_color\:\:rufous/ has_eye_color\:\:yellow/
+ 2633  cd ../../concept_val/eye/
+ 2634  rm -rfv has_eye_color\:\:brown/ has_eye_color\:\:buff/ has_eye_color\:\:grey/ has_eye_color\:\:olive/ has_eye_color\:\:orange/ has_eye_color\:\:pink/ has_eye_color\:\:purple/ has_eye_color\:\:rufous/ has_eye_color\:\:yellow/
+ 2635  clear
+ 2636  clear
+ 2637  ls -a
+ 2638  rm -rfv has_eye_color\:\:green/
+ 2639  cd ../../concept_train/eye/
+ 2640  rm -rfv has_eye_color\:\:green/
+ 2641  clear
+ 2642  ls -a
+ 2643  cd ../../
+ 2644  ls -a
+ 2645  clear
+ 2646  cd ../
+ 2647  ls -a
+ 2648  cd concept_data_old/
+ 2649  clear
+ 2650  mv concept_train/eye/* concept_train/nape
+ 2651  mv concept_val/eye/* concept_val/nape
+ 2652  mv concept_train/nape/* concept_train/
+ 2653  mv concept_val/nape/* concept_val/
+ 2654  ls -a
+ 2655  clear
+ 2656  cd concept_train/
+ 2657  cd ..
+ 2658  cp concept_train/ concept_train2/ -r
+ 2659  clear
+ 2660  cd concept_train
+ 2661  ls -a
+ 2662  clear
+ 2663  for d in has*; do mkdir -p "$d/$d" && cp -r "$d"/* "$d/$d"; done
+ 2664  cd ..
+ 2665  ls -a
+ 2666  rm -rfv concept_train
+ 2667  clear
+ 2668  cp concept_train/ concept_train2/ -r
+ 2669  clear
+ 2670  ls -a
+ 2671  cd concept_train
+ 2672  clear
+ 2673  ls -a
+ 2674  clear
+ 2675  for d in has*/; do base="${d%/}"; mkdir -p "$d/$base"; rsync -a --exclude="$base" "$d" "$d/$base"; done
+ 2676  cd ..
+ 2677  ls -a
+ 2678  rm -rfv concept_train
+ 2679  clear
+ 2680  cp concept_train/ concept_train2/ -r
+ 2681  clear
+ 2682  ls -a
+ 2683  cd concept_train
+ 2684  ls -a
+ 2685  clear
+ 2686  for d in */; do
+ 2687    name="${d%/}"
+ 2688    mkdir -p "${name}/${name}"
+ 2689    find "${name}" -mindepth 1 -maxdepth 1 -not -name "${name}" -exec cp -r {} "${name}/${name}" \;; done
+ 2690  cd ../legacyNewCW/ConceptWhitening-revision/
+ 2691  tensorboard --logdir=runs
+ 2692  clear
+ 2693  ls -a
+ 2694  cd ..
+ 2695  ls -=a
+ 2696  ls -a
+ 2697  rm -rfv concept_train
+ 2698  clear
+ 2699  ls -a
+ 2700  cp concept_train/ concept_train2/ -r
+ 2701  clear
+ 2702  cd concept_train
+ 2703  clear
+ 2704  ls -a
+ 2705  clear
+ 2706  for d in */; do
+ 2707    name="${d%/}"
+ 2708    mkdir -p "$d$name"
+ 2709    tar -C "$d" --exclude="$name" -cf - . | tar -C "$d$name" -xf -
+ 2710    find "$d" -mindepth 1 -maxdepth 1 -not -name "$name" -exec rm -rf {} \;; done
+ 2711  clear
+ 2712  ls -a
+ 2713  cd xtmp/CW/
+ 2714  cd legacyNewCW/
+ 2715  clear
+ 2716  git clone https://github.com/rbarton124/ConceptWhitening-revision.git
+ 2717  clear
+ 2718  cd ConceptWhitening-revision/
+ 2719  clear
+ 2720  ls -a
+ 2721  git checkout b7ddbfb6fe49745f615fb8ec48d30641552b284a
+ 2722  ls -a checkpoints/
+ 2723  clear
+ 2724  conda activate CW-old
+ 2725  clear
+ 2726  clear
+ 2727  python train_places.py --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/ --main_data ../../ConceptWhitening-revision/data/CUB/main_data/ --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black' --prefix 'cw_real_imagenet_bs_64_1_WL_7'  --whitened_layers '7'  --epochs 300  --batch_size 64 --lr 0.2 --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth
+ 2728  clear
+ 2729  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_imagenet_bs_64_1_WL_7'  --whitened_layers '7'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth
+ 2730  clear
+ 2731  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_imagenet_bs_64_1_WL_7'  --whitened_layers '7'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth
+ 2732  ls -a
+ 2733  cd xtmp/CW/ConceptWhitening-revision/
+ 2734  clear
+ 2735  conda activate CW-old
+ 2736  clear
+ 2737  cd ..
+ 2738  cd legacyNewCW/ConceptWhitening-revision/
+ 2739  clear
+ 2740  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_imagenet_bs_64_1_WL_7'  --whitened_layers '7'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth
+ 2741  cd xtmp/CW/ConceptWhitening-revision/
+ 2742  code
+ 2743  conda activate CW-old
+ 2744  celar
+ 2745  clear
+ 2746  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --concept_dir data/CUB/concept_data --whitened_layers '8'
+ 2747  clear
+ 2748  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --concept_dir data/CUB/concept_data/ --whitened_layers '8'
+ 2749  clear
+ 2750  rm -rfv plot_qcw/
+ 2751  clear
+ 2752  clear
+ 2753  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/concept_data/ --whitened_layers '8' --high_level 'eye,nape'
+ 2754  clear
+ 2755  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/concept_data/ --whitened_layers '8' --high_level 'eye,nape'
+ 2756  clear
+ 2757  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/concept_data/ --whitened_layers '8' --high_level 'eye,nape' --analysis_mode 'topk'
+ 2758   clear
+ 2759  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2760  clear
+ 2761  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2762  clear
+ 2763  ls -a
+ 2764  cd ../..
+ 2765  ls -a
+ 2766  cd CW/
+ 2767  cd ConceptWhitening-revision/
+ 2768  clear
+ 2769  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2770  clear
+ 2771  python plot_functions.py --checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2772  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2773  clear
+ 2774  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2775  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2776  clear
+ 2777  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2778  rm -rfv qcw_plots/
+ 2779  clear
+ 2780  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2781  clear
+ 2782  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2783  rm -rfv qcw_plots/
+ 2784  rm -rfv qcw_plots2/
+ 2785  rm -rfv qcw_plots_2/
+ 2786  clear
+ 2787  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2788  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2789  clear
+ 2790  rm -rfv qcw_plots/
+ 2791  clear
+ 2792  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2793  clear
+ 2794  rm -rfv qcw_plots_1/
+ 2795  clear
+ 2796  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2797  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2798  clear
+ 2799  rm -rfv qcw_plots_1/
+ 2800  rm -rfv qcw_plots/
+ 2801  rm -rfv qcw_plots_2/
+ 2802  cleclear
+ 2803  clear
+ 2804  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2805  clear
+ 2806  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2807  clear
+ 2808  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2809  clear
+ 2810  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2811  clear
+ 2812  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2813  clear
+ 2814  rm -rfv qcw_plots
+ 2815  rm -rfv qcw_plots_old/
+ 2816  rm -rfv qcw_plots_new/
+ 2817  clear
+ 2818  python plot_functions.py --model_checkpoint checkpoints/qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 2819  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2820  clear
+ 2821  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2822  clear
+ 2823  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2824  clear
+ 2825  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2826  cd xtmp/CW/ConceptWhitening-revision/
+ 2827  ls -a
+ 2828  cd ..
+ 2829  ls -a
+ 2830  clear
+ 2831  rm -rfv qcw_plots/
+ 2832  clear
+ 2833  clear
+ 2834  cd xtmp/CW/ConceptWhitening-revision/
+ 2835  conda activate CW-old
+ 2836  clear
+ 2837  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2838  asdfcelar
+ 2839  clear
+ 2840  tensorboard --logdir=runs
+ 2841  tensorboard --logdir=runs
+ 2842  clear
+ 2843  tensorboard --logdir newCW:runs/,oldCW:../legacyNewCW/ConceptWhitening-revision/runs/
+ 2844  cd ..
+ 2845  tensorboard --logdir=runs
+ 2846  clear
+ 2847  cd ConceptWhitening-revision/
+ 2848  clear ls -a
+ 2849  ls -a
+ 2850  clear
+ 2851  tensorboard --logdir=runs
+ 2852  tensorboard --logdir newCW:runs/,oldCW:../legacyNewCW/ConceptWhitening-revision/runs/
+ 2853  tensorboard --logdir newCW:runs/
+ 2854  clear
+ 2855  conda activate CW-old
+ 2856  claer
+ 2857  clear
+ 2858  tensorboard --logdir newCW:runs/
+ 2859  tensorboard --logdir runs/
+ 2860  clear
+ 2861  tensorboard --logdir_spec "newCW:runs/,oldCW:../legacyNewCW/ConceptWhitening-revision/runs/"
+ 2862  clear
+ 2863  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 2864  clear
+ 2865  tensorboard --logdir runs/
+ 2866  clear
+ 2867  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 2868  clear
+ 2869  tensorboard --logdir_spec "newCW:runs/,oldCW:../legacyNewCW/ConceptWhitening-revision/runs/"
+ 2870  clear
+ 2871  tensorboard --logdir runs/
+ 2872  clear
+ 2873  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 2874  clear
+ 2875  tensorboard --logdir runs/
+ 2876  clera
+ 2877  clear
+ 2878  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 2879  ls -a
+ 2880  cd xtmp/CW/ConceptWhitening-revision/
+ 2881  clear
+ 2882  cd xtmp/CW/ConceptWhitening-revision/
+ 2883  ls -a
+ 2884  clear
+ 2885  conda activate CW-old
+ 2886  python dataset_scripts/prepare_CUB_QCW.py --cub_dir data/CUB/CUB_200_2011 --output_concept data/CUB/concept_data_large --concepts "general,back,belly,beak,wing" --mappings 'data/CUB/mappings.json' -v
+ 2887  clear
+ 2888  ls -a
+ 2889  clear
+ 2890  cd data/CUB/concept_data_large/concept_train/
+ 2891  clear
+ 2892  mkdir back2
+ 2893  mv back/has_back_color\:\:black/ back/has_back_color\:\:blue/ back/has_back_color\:\:red/ back/has_back_color\:\:yellow/ back2/
+ 2894  mkdir beak2
+ 2895  mv beak/has_bill_length\:\:longer_than_head/ beak/has_bill_length\:\:shorter_than_head/ beak2/
+ 2896  mkdir belly2
+ 2897  mv belly/has_belly_color\:\:black/ belly/has_belly_color\:\:white/ belly/has_belly_color\:\:blue/ belly/has_belly_color\:\:red/ belly/has_belly_color\:\:yellow/ belly2/
+ 2898  mkdir general2
+ 2899  mv general/has_size\:\:medium_\(9_-_16_in\)/ mv general/has_size\:\:very_small_\(3_-_5_in\)/ general2/
+ 2900  mv general/has_size\:\:medium_\(9_-_16_in\)/ general/has_size\:\:very_small_\(3_-_5_in\)/ general2/
+ 2901  mkdir rejects
+ 2902  mv back beak belly wing general rejects/
+ 2903  mv back2 back
+ 2904  mb beak2 beak
+ 2905  mv beak2 beak
+ 2906  mv belly2 belly
+ 2907  mv general2 general
+ 2908  cd ../concept_val/
+ 2909  mkdir back2
+ 2910  mv back/has_back_color\:\:black/ back/has_back_color\:\:blue/ back/has_back_color\:\:red/ back/has_back_color\:\:yellow/ back2/
+ 2911  mkdir beak2
+ 2912  mv beak/has_bill_length\:\:longer_than_head/ beak/has_bill_length\:\:shorter_than_head/ beak2/
+ 2913  mkdir belly2
+ 2914  mv belly/has_belly_color\:\:black/ belly/has_belly_color\:\:white/ belly/has_belly_color\:\:blue/ belly/has_belly_color\:\:red/ belly/has_belly_color\:\:yellow/ belly2/
+ 2915  mkdir general2
+ 2916  mv general/has_size\:\:medium_\(9_-_16_in\)/ general/has_size\:\:very_small_\(3_-_5_in\)/ general2/
+ 2917  mkdir rejects
+ 2918  mv back beak belly wing general rejects/
+ 2919  back2 back
+ 2920  mv back2 back
+ 2921  mv beak2 beak
+ 2922  mv belly2 belly
+ 2923  mv general2 general
+ 2924  clear
+ 2925  clear
+ 2926  cd ../../../
+ 2927  cd ../../
+ 2928  ls -a
+ 2929  cd ConceptWhitening
+ 2930  cd ../ConceptWhitening-revision/
+ 2931  clear
+ 2932  mv ../legacyNewCW/ConceptWhitening-revision/runs/cw_real_imagenet_bs_64_1_WL_7_7_1742514075/ runs/
+ 2933  mv ../legacyNewCW/ConceptWhitening-revision/checkpoints/nape_colo_whit_nape_colo_red_nape_colo_gree_nape_colo_blue_nape_colo_blac_eye_colo_whit_eye_colo_red_eye_colo_blue_eye_colo_blac/ checkpoints/
+ 2934  clear
+ 2935  clear
+ 2936  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'bn_qcw_pret_test_WL_7_8'  --batches_per_concept 1  --whitened_layers '8'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/bn_qcw_imagenet_bs_64_1_WL_7 --use_bn_qcw
+ 2937  cd xtmp/CW/ConceptWhitening-revision/
+ 2938  conda activate CW-old
+ 2939  clear
+ 2940  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'bn_qcw_CUB_test_WL_8'  --batches_per_concept 1  --whitened_layers '8'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/bn_qcw_imagenet_bs_64_1_WL_7_checkpoint.pth  --use_bn_qcw
+ 2941  cd xtmp/CW/ConceptWhitening-revision/
+ 2942  conda activate CW-old
+ 2943  clear
+ 2944  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'bn_qcw_pret_test_WL_7_8'  --batches_per_concept 1  --whitened_layers '8'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/bn_qcw_imagenet_bs_64_1_WL_7_checkpoint.pth  --use_bn_qcw
+ 2945  cd xtmp/CW/ConceptWhitening-revision/
+ 2946  conda activate CW-old
+ 2947  clear
+ 2948  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'bn_qcw_CUB_test_WL_8'  --batches_per_concept 1  --whitened_layers '8'  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/res18_CUB_bs_64_best.pth  --use_bn_qcw
+ 2949  conda activate CW-old
+ 2950  clear
+ 2951  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_imagenet_bs_64_1_WL_5_7'  --whitened_layers '5,7'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth
+ 2952  cd xtmp/CW/legacyNewCW/ConceptWhitening-revision/
+ 2953  clear
+ 2954  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_imagenet_bs_64_1_WL_5_7'  --whitened_layers '5,7'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/resnet18_imagenet.pth
+ 2955  clearclear
+ 2956  clear
+ 2957  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_imagenet_bs_64_1_WL_5_7'  --whitened_layers '8'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/cw_real_pret_og_WL_7_8
+ 2958  cd xtmp/CW/legacyNewCW/ConceptWhitening-revision/
+ 2959  clear
+ 2960  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_pret_og_WL_7_8'  --whitened_layers '8'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar 
+ 2961  conda activate CW-old
+ 2962  clear
+ 2963  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_pret_og_WL_7_8'  --whitened_layers '8'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar 
+ 2964  clear
+ 2965  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_pret_og_WL_7_8'  --whitened_layers '8'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar --only_load_weights
+ 2966  python train_places.py  --concept_data ../../ConceptWhitening-revision/data/CUB/concept_data_old/  --main_data ../../ConceptWhitening-revision/data/CUB/main_data/  --concepts 'has_nape_color::white,has_nape_color::red,has_nape_color::green,has_nape_color::blue,has_nape_color::black,has_eye_color::white,has_eye_color::red,has_eye_color::blue,has_eye_color::black'  --prefix 'cw_real_pret_og_WL_7_8'  --whitened_layers '8'  --epochs 300  -b 64  --lr 0.2  --resume ../../ConceptWhitening-revision/checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar --only-load-weights
+ 2967  cd xtmp/CW/ConceptWhitening-revision/
+ 2968  lks -a
+ 2969  ls -a
+ 2970  clear
+ 2971  conda activate CW-old
+ 2972  clear
+ 2973  python plot_functions.py --model_checkpoint checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "7"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2974  clear
+ 2975  python plot_functions.py --model_checkpoint checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "7"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2976  cd xtmp/CW/ConceptWhitening-revision/
+ 2977  conda activate CW-old
+ 2978  clear
+ 2979  rm -rfv qcw_plots*
+ 2980  clear
+ 2981  python plot_functions.py --model_checkpoint checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "7"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2982  python plot_functions.py --model_checkpoint checkpoints/cw_real_imagenet_bs_64_1_WL_7_checkpoint.pth.tar --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "7"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 2983  conda activate CW-old
+ 2984  clera
+ 2985  clera
+ 2986  clera
+ 2987  clearr
+ 2988  clear
+ 2989  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'bn_qcw_imagenet_WL_5'  --whitened_layers '8'  --epochs 300  --resume checkpoints/resnet18_imagenet.pth  --use_bn_qcw
+ 2990  cd xtmp/CW/ConceptWhitening-revision/
+ 2991  conda activate CW-old
+ 2992  clear
+ 2993  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_WL_5'  --whitened_layers '5'  --epochs 300  --resume checkpoints/resnet18_imagenet.pth
+ 2994  clera
+ 2995  clear
+ 2996  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'bn_qcw_imagenet_WL_7'  --whitened_layers '7'  --epochs 300  --resume checkpoints/resnet18_imagenet.pth  --use_bn_qcw
+ 2997  conda activate CW-old
+ 2998  clear
+ 2999  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'qcw_imagenet_WL_7'  --whitened_layers '7'  --epochs 300  --resume checkpoints/resnet18_imagenet.pth
+ 3000  clear
+ 3001  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 3002  clear
+ 3003  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 3004  clear
+ 3005  cd../../
+ 3006  cd ..
+ 3007  ls -a
+ 3008  cd ConceptWhitening-revision/
+ 3009  ls -a
+ 3010  clear
+ 3011  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 3012  clear
+ 3013  tensorboard --logdir runs/
+ 3014  clera
+ 3015  clera
+ 3016  clear
+ 3017  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 3018  nvidia-smi
+ 3019  clear
+ 3020  watch --help
+ 3021  watch -n 1 nvidia-smi
+ 3022  cd xtmp/CW/ConceptWhitening-revision/
+ 3023  conda activate CW-old
+ 3024  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res18_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth --vanilla_pretrain
+ 3025  conda activate CW-old
+ 3026  clear
+ 3027  ls -a
+ 3028  cd xtmp/CW/ConceptWhitening-revision/
+ 3029  clear
+ 3030  cd checkpoints-new/
+ 3031  clear
+ 3032  cd ..
+ 3033  cd checkpoints
+ 3034  clear
+ 3035  clear
+ 3036  wget https://download.pytorch.org/models/resnet50-0676ba61.pth -O resnet50_imagenet.pth
+ 3037  clear
+ 3038  cd ..
+ 3039  ls -a
+ 3040  clear
+ 3041  clear
+ 3042  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res50_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth  --vanilla_pretrain  --depth 50
+ 3043  cd xtmp/CW/ConceptWhitening-revision/
+ 3044  cond
+ 3045  conda activate CW-old
+ 3046  clear
+ 3047  python train_qcw.py  --data_dir data/CUB/main_data/  --concept_dir data/CUB/concept_data/  --concepts 'eye,nape'  --prefix 'res50_CUB_bs_64'  --batches_per_concept 3  --whitened_layers ''  --epochs 300  --batch_size 64  --lr 0.2  --resume checkpoints/resnet18_imagenet.pth  --use_bn_qcw  --depth 50  --vanilla_pretrain
+ 3048  conda activate
+ 3049  clear
+ 3050  tensorboard --logdir ../legacyNewCW/ConceptWhitening-revision/runs/
+ 3051  ls -a
+ 3052  cd xtmp/CW/ConceptWhitening-revision/
+ 3053  clear
+ 3054  rm -rfv qcw_plots*
+ 3055  clear
+ 3056  clear
+ 3057  conda activate CW-old
+ 3058  clear
+ 3059  clear
+ 3060  clear
+ 3061  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10
+ 3062  python plot_functions.py --model_checkpoint checkpoints/bn_qcw_pret_bs_64_1_WL_8_checkpoint.pth --data_dir data/CUB/main_data/ --concept_dir data/CUB/concept_data/ --whitened_layers "8"  --hl_concepts 'eye,nape' --run_purity --topk_images --k 10 --use_bn_qcw
+ 3063  clear
+ 3064  history > history6.txt

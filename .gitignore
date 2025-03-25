@@ -70,6 +70,9 @@ desktop.ini
 data/
 runs/
 checkpoints/
+checkpoints-new/
 old-runs/
 old-runs2/
+runs_proper/
 kaggle.json
+figures/

@@ -39,6 +39,9 @@ class ResNetQCW(nn.Module):
         else:
             raise ValueError(f"Unsupported depth: {depth}")
         
+        in_features = self.backbone.fc.in_features
+        self.backbone.fc = nn.Linear(in_features, num_classes)
+        
         self.cw_layers = []
         layer_names = ["layer1", "layer2", "layer3", "layer4"]
         

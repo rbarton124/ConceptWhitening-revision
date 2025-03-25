@@ -114,7 +114,10 @@ class ResNetQCW(nn.Module):
             bn_dims = [64, 128, 256, 512]
         else:
             raise ValueError(f"Unsupported depth: {depth}")
-
+        
+        in_features = self.backbone.fc.in_features
+        self.backbone.fc = nn.Linear(in_features, num_classes)
+        
         self.cw_layers = []
 
         layer_names = ["layer1", "layer2", "layer3", "layer4"]
@@ -284,3 +287,22 @@ def get_last_qcw_layer(model):
         if isinstance(module, IterNormRotation):
             return module
     raise ValueError("No IterNormRotation (QCW) layer found in the model")
+
+def get_qcw_layer(model, layer_idx):
+    """
+    Finds the last IterNormRotation in model.cw_layers or by reversing modules,
+    same as before.
+    """
+    if hasattr(model, "cw_layers") and len(model.cw_layers) > 0:
+        return model.cw_layers[layer_idx]
+
+
+    # fallback: search modules
+    pot_modules = []
+    for module in list(model.modules()):
+        if isinstance(module, IterNormRotation):
+            pot_modules.append(module)
+    if len(pot_modules) > 0:
+        return pot_modules[layer_idx]
+
+    raise ValueError("Couldnt find the requested IterNormRotation (QCW) layer in the model")

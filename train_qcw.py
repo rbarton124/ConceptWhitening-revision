@@ -32,6 +32,7 @@ NUM_CLASSES     = 200
 CROP_SIZE       = 224
 RESIZE_SIZE     = 256
 PIN_MEMORY      = True
+
 ########################
 # Argument Parser
 ########################
@@ -50,7 +51,7 @@ parser.add_argument("--act_mode", default="pool_max", help="Activation mode for 
 # Training hyperparams
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
-parser.add_argument("--lr", type=float, default=0.1, help="Initial learning rate.")
+parser.add_argument("--lr", type=float, default=0.2, help="Initial learning rate.")
 parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
 parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
@@ -64,8 +65,10 @@ parser.add_argument("--use_bn_qcw", action="store_true",
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
 # System
-parser.add_argument("--seed", type=int, default=1234, help="Random seed.")
+parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
+parser.add_argument("--log_dir", type=str, default="runs_proper", help="Directory to save logs.")
+parser.add_argument("--checkpoint_dir", type=str, default="checkpoints-new", help="Directory to save checkpoints.")
 # Feature toggles
 parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
 parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
@@ -104,7 +107,7 @@ torch.cuda.manual_seed_all(args.seed)
 random.seed(args.seed)
 cudnn.benchmark = True
 
-writer = SummaryWriter(log_dir=os.path.join("runs", f"{args.prefix}_{int(time.time())}"))
+writer = SummaryWriter(log_dir=os.path.join(args.log_dir, f"{args.prefix}_{int(time.time())}"))
 
 ########################
 # Build Main Dataloaders
@@ -631,7 +634,7 @@ def validate(loader, model, epoch, writer, mode="Val"):
 ########################
 # Save + Resume
 ########################
-def save_checkpoint(state, is_best, prefix, outdir="./checkpoints"):
+def save_checkpoint(state, is_best, prefix, outdir=args.checkpoint_dir):
     os.makedirs(outdir, exist_ok=True)
     ckpt_path = os.path.join(outdir, f"{prefix}_checkpoint.pth")
     torch.save(state, ckpt_path)
