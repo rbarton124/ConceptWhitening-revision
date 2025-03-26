@@ -112,7 +112,8 @@ class IterNorm(nn.Module):
     """
     Basic iterative normalization layer (no concept alignment).
     """
-    def __init__(self, num_features, num_groups=1, num_channels=None, T=5, dim=4, eps=1e-5, momentum=0.1, affine=True):
+    def __init__(self, num_features, num_groups=1, num_channels=None,
+                 T=5, dim=4, eps=1e-5, momentum=0.1, affine=True):
         super().__init__()
         self.T = T
         self.eps = eps
@@ -124,7 +125,7 @@ class IterNorm(nn.Module):
             num_channels = (num_features - 1)//num_groups + 1
         num_groups = num_features // num_channels
         while num_features % num_channels != 0:
-            num_channels //= 2
+            num_channels //=2
             num_groups = num_features // num_channels
         assert num_groups>0 and num_features % num_channels==0
 
@@ -132,16 +133,18 @@ class IterNorm(nn.Module):
         self.num_channels=num_channels
         shape=[1]*dim
         shape[1]=self.num_features
+
         if self.affine:
             self.weight=Parameter(torch.Tensor(*shape))
             self.bias=Parameter(torch.Tensor(*shape))
         else:
             self.register_parameter('weight', None)
             self.register_parameter('bias', None)
-        
+
         self.register_buffer('running_mean', torch.zeros(num_groups, num_channels,1))
-        self.register_buffer('running_wm', torch.eye(num_channels, device=torch.device('cpu'))
-                             .expand(num_groups,num_channels,num_channels).clone())
+        self.register_buffer('running_wm',
+            torch.eye(num_channels, device=torch.device('cpu')).expand(num_groups,num_channels,num_channels).clone()
+        )
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -165,16 +168,16 @@ class IterNormRotation(nn.Module):
     Full QCW Implementation: single-axis (mode >=0) or subspace-based (winner-takes-all).
     With concept-loss tracking so you can log a "concept loss" metric in TensorBoard.
     """
-    def __init__(self, 
-                 num_features, 
-                 num_groups=1, 
-                 num_channels=None, 
-                 T=10, 
-                 dim=4, 
-                 eps=1e-5, 
-                 momentum=0.05, 
+    def __init__(self,
+                 num_features,
+                 num_groups=1,
+                 num_channels=None,
+                 T=10,
+                 dim=4,
+                 eps=1e-5,
+                 momentum=0.05,
                  affine=False,
-                 mode=-1, 
+                 mode=-1,
                  activation_mode='pool_max',
                  cw_lambda=1.0,
                  subspace_map=None,
@@ -268,12 +271,12 @@ class IterNormRotation(nn.Module):
                 c1=1e-4
                 c2=0.9
 
-                A=torch.einsum('gin,gjn->gij',G,R)-torch.einsum('gin,gjn->gij',R,G)
+                A=torch.einsum('gin,gjn->gij',G,R) - torch.einsum('gin,gjn->gij',R,G)
                 I=torch.eye(size_R[2],device=G.device).expand(*size_R)
                 dF_0=-0.5*(A**2).sum()
                 cnt=0
                 while True:
-                    Q=torch.bmm((I+0.5*tau*A).inverse(),I-0.5*tau*A)
+                    Q=torch.bmm((I+0.5*tau*A).inverse(), I-0.5*tau*A)
                     Y_tau=torch.bmm(Q,R)
                     F_X=(G*R).sum()
                     F_Y_tau=(G*Y_tau).sum()
@@ -295,20 +298,24 @@ class IterNormRotation(nn.Module):
                     if cnt>500:
                         print("update fail")
                         break
-                Q=torch.bmm((I+0.5*tau*A).inverse(),I-0.5*tau*A)
+                Q=torch.bmm((I+0.5*tau*A).inverse(), I-0.5*tau*A)
                 R=torch.bmm(Q,R)
             self.running_rot=R
             self.counter=torch.ones(size_R[-1],device=G.device)*0.001
 
     def forward(self, X:torch.Tensor):
+        # 1) IterNorm
         X_hat=iterative_normalization_py.apply(
-            X,self.running_mean,self.running_wm,self.num_channels,
-            self.T,self.eps,self.momentum,self.training
+            X, self.running_mean, self.running_wm, self.num_channels,
+            self.T, self.eps, self.momentum, self.training
         )
         size_X=X_hat.size()
         size_R=self.running_rot.size()
-        X_hat=X_hat.view(size_X[0],size_R[0],size_R[2],*size_X[2:])
 
+        # reshape
+        X_hat=X_hat.view(size_X[0], size_R[0], size_R[2], *size_X[2:])
+
+        # 2) Concept alignment (single-axis or subspace)
         with torch.no_grad():
             # Single-axis approach
             if self.mode>=0 and self.active_subspace is None:
@@ -322,15 +329,16 @@ class IterNormRotation(nn.Module):
                 else:
                     pass
 
-        # apply rotation
-        X_hat=torch.einsum('bgchw,gdc->bgdhw',X_hat,self.running_rot)
+        # 3) Rotation
+        X_hat=torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
         X_hat=X_hat.view(*size_X)
         if self.affine:
             return X_hat*self.weight+self.bias
         else:
             return X_hat
 
-    def _reduce_activation(self,X_hat):
+    def _reduce_activation(self, X_hat):
+        # shape: [B, G, C, H, W]
         B,G,C,H,W=X_hat.shape
         X_reshaped=X_hat.reshape(B,C,H,W)
         if self.activation_mode=='mean':
@@ -347,54 +355,80 @@ class IterNormRotation(nn.Module):
             act=mp[0].reshape(B,C,-1).mean(dim=2)
         else:
             act=X_reshaped.mean(dim=(2,3))
-
-        return act  # shape [B,C]
+        return act  # shape [B, C]
 
     def _accumulate_gradient_single_axis(self, X_hat, axis_idx):
         act=self._reduce_activation(X_hat)
-        grad=-act.mean(dim=0)
+        grad=-act.mean(dim=0)  # shape [C]
 
-        # measure how large the average activation was
+        # measure average activation
         concept_loss_val = act.mean().item()
         self.concept_loss_acc += concept_loss_val
         self.concept_loss_count += 1
 
-        self.sum_G[:,axis_idx,:]=self.momentum*grad+(1.-self.momentum)*self.sum_G[:,axis_idx,:]
-        self.counter[axis_idx]+=act.shape[0]
+        # consistent indexing: sum_G[group, axis, feature]
+        # num_groups=1 => group dimension = 0 or : 
+        # We'll do the same pattern as subspace, but let's unify:
+        self.sum_G[:, axis_idx, :] = (
+            self.momentum * grad
+            + (1.0 - self.momentum) * self.sum_G[:, axis_idx, :]
+        )
+        self.counter[axis_idx]+= act.shape[0]
 
     def _accumulate_gradient_subspace(self, X_hat, subspace_axes):
-        B,G,C,H,W=X_hat.shape
-        act=self._reduce_activation(X_hat)  # shape [B,C]
-        if len(subspace_axes)==0:
+        """
+        Winner-takes-all among subspace_axes, scaled by self.cw_lambda.
+        If cw_lambda = 0, we skip updating sum_G entirely to avoid decaying old gradient.
+        """
+        B, G, C, H, W = X_hat.shape
+        act = self._reduce_activation(X_hat)  # shape [B, C]
+        if not subspace_axes:
             return
-        subspace_acts=act[:, subspace_axes]
-        winners=subspace_acts.argmax(dim=1)
 
-        aggregator=torch.zeros(C,C, device=act.device)
-        local_counter=torch.zeros(C, device=act.device)
+        # If cw_lambda=0 => aggregator is guaranteed to be 0 => skip update
+        if abs(self.cw_lambda) < 1e-12:
+            # do nothing and return
+            return
 
-        # track chosen winner's activation => concept loss
+        # find winners
+        subspace_acts = act[:, subspace_axes]  # shape [B, len(subspace_axes)]
+        winners = subspace_acts.argmax(dim=1)
+
+        aggregator = torch.zeros(C, C, device=act.device)
+        local_counter = torch.zeros(C, device=act.device)
+
         chosen_vals = []
 
         for i in range(B):
-            global_axis=subspace_axes[winners[i].item()]
-            chosen_vals.append(act[i,global_axis].item())  # measure how big that chosen axis was
+            global_axis = subspace_axes[winners[i].item()]
+            chosen_vals.append(act[i, global_axis].item())
 
-            aggregator[global_axis,:]+= -self.cw_lambda*act[i,:]
-            local_counter[global_axis]+=1
+            # multiply by cw_lambda
+            aggregator[global_axis, :] += -(self.cw_lambda) * act[i, :]
+            local_counter[global_axis] += 1
 
-        # Average activation among winners => concept_loss
-        if len(chosen_vals)>0:
-            concept_loss_val = sum(chosen_vals)/len(chosen_vals)
+        # concept_loss
+        if chosen_vals:
+            concept_loss_val = sum(chosen_vals) / len(chosen_vals)
             self.concept_loss_acc += concept_loss_val
             self.concept_loss_count += 1
 
-        aggregator=aggregator/float(B)
+        aggregator /= float(B)
+
         for a in subspace_axes:
-            self.sum_G[0,a,:]=self.momentum*aggregator[a,:]+(1.-self.momentum)*self.sum_G[0,a,:]
-            self.counter[a]+=local_counter[a].item()
+            self.sum_G[:, a, :] = (
+                self.momentum * aggregator[a, :]
+                + (1.0 - self.momentum) * self.sum_G[:, a, :]
+            )
+            self.counter[a] += local_counter[a].item()
 
     def extra_repr(self):
         return (f"{self.num_features}, num_channels={self.num_channels}, T={self.T}, eps={self.eps}, "
                 f"momentum={self.momentum}, affine={self.affine}, cw_lambda={self.cw_lambda}, "
                 f"subspace_map={list(self.subspace_map.keys())}")
+
+    def set_subspace_scaling(self, lambda_):
+        """
+        Called to set cw_lambda for subspace accumulation pass.
+        """
+        self.cw_lambda = lambda_
