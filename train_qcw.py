@@ -281,12 +281,15 @@ if not args.vanilla_pretrain:
         # lumps each HL concept into dimension [0], or each concept => single axis
         subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
 
+subspace_mapping = concept_ds.subspace_mapping
+print(f"Subspace mapping: {subspace_mapping}")
+
 model = build_resnet_qcw(
     num_classes=NUM_CLASSES,
     depth=args.depth,
     whitened_layers=args.whitened_layers,
     act_mode=args.act_mode,
-    subspaces=subspaces,
+    subspaces=subspace_mapping,
     use_subspace=(not args.disable_subspaces), # this logic is not fleshed out yet
     use_free=args.use_free, # doesn't do anything
     pretrained_model=None,
@@ -465,7 +468,6 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
     Returns:
         Dict with alignment metrics (global_top1, subspace_top1, global_top5)
     """
-    from types import SimpleNamespace
     
     subspace_mapping = concept_dataset.subspace_mapping
     model.eval()
