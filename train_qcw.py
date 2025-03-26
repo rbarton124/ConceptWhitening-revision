@@ -465,6 +465,22 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
         hl_loader_sets[hl_name].append((sc_label, loader))
 
     model.eval()
+
+    with torch.no_grad():
+        for (sc_label, loader) in subconcept_loaders:
+            # sc_label is the axis index for that labeled sub-concept
+            model.module.change_mode(sc_label)  # single-axis alignment
+            loader_iter = iter(loader)
+
+            for _ in range(batches_per_concept):
+                batch_data = next(loader_iter, None)
+                if not batch_data or not len(batch_data[0]):
+                    break
+                imgs = batch_data[0].cuda()
+                for img in imgs:
+                    _ = model(img.unsqueeze(0))
+    model.module.update_rotation_matrix()
+
     with torch.no_grad():
         # For each HL concept, gather all sub-concepts
         for hl_name, sc_list in hl_loader_sets.items():
@@ -481,23 +497,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
             model.module.update_rotation_matrix()
-    
-        with torch.no_grad():
-            for (sc_label, loader) in subconcept_loaders:
-                # sc_label is the axis index for that labeled sub-concept
-                model.module.change_mode(sc_label)  # single-axis alignment
-                loader_iter = iter(loader)
-
-                for _ in range(batches_per_concept):
-                    batch_data = next(loader_iter, None)
-                    if not batch_data or not len(batch_data[0]):
-                        break
-                    imgs = batch_data[0].cuda()
-                    for img in imgs:
-                        _ = model(img.unsqueeze(0))
-        model.module.update_rotation_matrix()
         
-    
 
     ############################################################################
     # Step C: Update rotation matrix once for both alignment signals
