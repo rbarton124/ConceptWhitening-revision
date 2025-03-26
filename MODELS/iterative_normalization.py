@@ -9,7 +9,7 @@ class iterative_normalization_py(torch.autograd.Function):
     @staticmethod
     def forward(ctx, *args, **kwargs):
         X, running_mean, running_wmat, nc, ctx.T, eps, momentum, training = args
-        # EXACT SAME as your existing code for whitening
+        # -- Standard whitening forward pass
         ctx.g = X.size(1) // nc
         x = X.transpose(0, 1).contiguous().reshape(ctx.g, nc, -1)
         _, d, m = x.size()
@@ -47,19 +47,17 @@ class iterative_normalization_py(torch.autograd.Function):
             wm = P[ctx.T].mul_(rTr.sqrt())
             running_mean.copy_(momentum * mean + (1. - momentum)*running_mean)
             running_wmat.copy_(momentum * wm + (1. - momentum)*running_wmat)
-
         else:
             xc = x - running_mean
             wm = running_wmat
 
         xn = wm.matmul(xc)
-        Xn = xn.reshape(X.size(1), X.size(0), *X.size()[2:]).transpose(0,1).contiguous()
+        Xn = xn.reshape(X.size(1), X.size(0), *X.size()[2:]).transpose(0, 1).contiguous()
         ctx.save_for_backward(*saved)
         return Xn
 
     @staticmethod
     def backward(ctx, *grad_outputs):
-        # EXACT SAME as your existing code
         (grad,) = grad_outputs
         saved = ctx.saved_variables
         xc = saved[0]
@@ -68,7 +66,7 @@ class iterative_normalization_py(torch.autograd.Function):
         P = saved[3:]
         g, d, m = xc.size()
 
-        g_ = grad.transpose(0,1).contiguous().reshape_as(xc)
+        g_ = grad.transpose(0, 1).contiguous().reshape_as(xc)
         g_wm = g_.matmul(xc.transpose(-2, -1))
         g_P = g_wm * rTr.sqrt()
         wm = P[ctx.T]
@@ -95,7 +93,7 @@ class iterative_normalization_py(torch.autograd.Function):
         g_tr = (
             (-sn.matmul(g_sn) + g_wm.transpose(-2, -1).matmul(wm))
             * P[0]
-        ).sum((1,2), keepdim=True) * P[0]
+        ).sum((1, 2), keepdim=True) * P[0]
 
         g_sigma = (g_sn + g_sn.transpose(-2, -1) + 2.0*g_tr) * (-0.5/m * rTr)
         g_x = torch.baddbmm(
@@ -111,6 +109,9 @@ class iterative_normalization_py(torch.autograd.Function):
 
 
 class IterNorm(nn.Module):
+    """
+    Basic iterative normalization layer (no concept alignment).
+    """
     def __init__(self, num_features, num_groups=1, num_channels=None, T=5, dim=4, eps=1e-5, momentum=0.1, affine=True):
         super().__init__()
         self.T = T
@@ -123,7 +124,7 @@ class IterNorm(nn.Module):
             num_channels = (num_features - 1)//num_groups + 1
         num_groups = num_features // num_channels
         while num_features % num_channels != 0:
-            num_channels //=2
+            num_channels //= 2
             num_groups = num_features // num_channels
         assert num_groups>0 and num_features % num_channels==0
 
@@ -162,7 +163,7 @@ class IterNorm(nn.Module):
 class IterNormRotation(nn.Module):
     """
     Full QCW Implementation: single-axis (mode >=0) or subspace-based (winner-takes-all).
-    Includes optional free concepts via subspace_map expansions, scaled by cw_lambda.
+    With concept-loss tracking so you can log a "concept loss" metric in TensorBoard.
     """
     def __init__(self, 
                  num_features, 
@@ -225,12 +226,29 @@ class IterNormRotation(nn.Module):
         self.register_buffer('sum_G', torch.zeros(num_groups,num_channels,num_channels))
         self.register_buffer('counter', torch.ones(num_channels)*0.001)
 
+        # concept-loss accumulators
+        self.concept_loss_acc = 0.0
+        self.concept_loss_count = 0
+
         self.reset_parameters()
 
     def reset_parameters(self):
         if self.affine:
             nn.init.ones_(self.weight)
             nn.init.zeros_(self.bias)
+
+    # Concept-loss interface
+    def reset_concept_loss(self):
+        """ Call before your alignment loop if you want a fresh metric. """
+        self.concept_loss_acc = 0.0
+        self.concept_loss_count = 0
+
+    def get_concept_loss(self):
+        """ Retrieve average concept loss over the last alignment pass. """
+        if self.concept_loss_count>0:
+            return self.concept_loss_acc / float(self.concept_loss_count)
+        else:
+            return 0.0
 
     def set_subspace(self, subspace_name:str):
         self.active_subspace=subspace_name
@@ -289,21 +307,19 @@ class IterNormRotation(nn.Module):
         )
         size_X=X_hat.size()
         size_R=self.running_rot.size()
-        # reshape => [B, G, C, H, W], typically G=1
         X_hat=X_hat.view(size_X[0],size_R[0],size_R[2],*size_X[2:])
 
         with torch.no_grad():
-            # Single-axis approach if mode>=0 and no active_subspace
+            # Single-axis approach
             if self.mode>=0 and self.active_subspace is None:
                 self._accumulate_gradient_single_axis(X_hat, self.mode)
 
-            # subspace approach if active_subspace is set
+            # Subspace approach
             elif self.active_subspace is not None:
                 if self.active_subspace in self.subspace_map:
                     subspace_axes=self.subspace_map[self.active_subspace]
                     self._accumulate_gradient_subspace(X_hat, subspace_axes)
                 else:
-                    # fallback => do nothing
                     pass
 
         # apply rotation
@@ -315,7 +331,6 @@ class IterNormRotation(nn.Module):
             return X_hat
 
     def _reduce_activation(self,X_hat):
-        # X_hat shape => [B, G, C, H, W], typically G=1 => [B,C,H,W]
         B,G,C,H,W=X_hat.shape
         X_reshaped=X_hat.reshape(B,C,H,W)
         if self.activation_mode=='mean':
@@ -329,7 +344,6 @@ class IterNormRotation(nn.Module):
             act=sum_val/denom
         elif self.activation_mode=='pool_max':
             mp=self.maxpool(X_reshaped)
-            # mp[0] is the values => shape [B,C,H',W']
             act=mp[0].reshape(B,C,-1).mean(dim=2)
         else:
             act=X_reshaped.mean(dim=(2,3))
@@ -338,30 +352,42 @@ class IterNormRotation(nn.Module):
 
     def _accumulate_gradient_single_axis(self, X_hat, axis_idx):
         act=self._reduce_activation(X_hat)
-        grad=-act.mean(dim=0)  # shape [C]
+        grad=-act.mean(dim=0)
+
+        # measure how large the average activation was
+        concept_loss_val = act.mean().item()
+        self.concept_loss_acc += concept_loss_val
+        self.concept_loss_count += 1
+
         self.sum_G[:,axis_idx,:]=self.momentum*grad+(1.-self.momentum)*self.sum_G[:,axis_idx,:]
         self.counter[axis_idx]+=act.shape[0]
 
     def _accumulate_gradient_subspace(self, X_hat, subspace_axes):
-        """
-        Winner-takes-all among subspace_axes. scaled by cw_lambda
-        """
         B,G,C,H,W=X_hat.shape
         act=self._reduce_activation(X_hat)  # shape [B,C]
-        # gather subspace portion
         if len(subspace_axes)==0:
             return
-        subspace_acts=act[:, subspace_axes] # shape [B, len(subspace_axes)]
-        winners=subspace_acts.argmax(dim=1) # shape [B], index in [0..len(subspace_axes)-1]
+        subspace_acts=act[:, subspace_axes]
+        winners=subspace_acts.argmax(dim=1)
 
         aggregator=torch.zeros(C,C, device=act.device)
         local_counter=torch.zeros(C, device=act.device)
 
+        # track chosen winner's activation => concept loss
+        chosen_vals = []
+
         for i in range(B):
             global_axis=subspace_axes[winners[i].item()]
-            # negative push => aggregator[global_axis,:] += -cw_lambda * act[i,:]
+            chosen_vals.append(act[i,global_axis].item())  # measure how big that chosen axis was
+
             aggregator[global_axis,:]+= -self.cw_lambda*act[i,:]
             local_counter[global_axis]+=1
+
+        # Average activation among winners => concept_loss
+        if len(chosen_vals)>0:
+            concept_loss_val = sum(chosen_vals)/len(chosen_vals)
+            self.concept_loss_acc += concept_loss_val
+            self.concept_loss_count += 1
 
         aggregator=aggregator/float(B)
         for a in subspace_axes:

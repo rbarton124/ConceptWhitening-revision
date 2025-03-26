@@ -404,6 +404,7 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
     top1   = AverageMeter()
     top5   = AverageMeter()
     alignment_score = AverageMeter()  # For tracking the concept alignment score
+    concept_loss = 0.0
 
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
                 desc=f"[Train] Epoch {epoch+1}", smoothing=0.02)
@@ -437,13 +438,17 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             
             alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
             
+            concept_loss = alignment_metrics['concept_loss']
+
             writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
             writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
+            writer.add_scalar("CW/Alignment/ConceptLoss", concept_loss, iteration)
 
         postfix_dict = {"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", "Top5": f"{top5.avg:.2f}"}
         if not args.vanilla_pretrain:
             postfix_dict["Alignment"] = f"{alignment_score.avg:.2f}"
+            postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
         pbar.set_postfix(postfix_dict)
 
         writer.add_scalar("Train/Loss", losses.val, iteration)
@@ -468,53 +473,49 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
     Returns:
         Dict with alignment metrics (global_top1, subspace_top1, global_top5)
     """
-    
     subspace_mapping = concept_dataset.subspace_mapping
     model.eval()
     
     # Get subconcept to high-level concept mapping from the dataset
     sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
     
-    # ACCUMULATE GRADIENTS FOR ALIGNMENT
+    # 1) Reset concept loss for all CW layers
+    for cw_layer in model.module.cw_layers:
+        cw_layer.reset_concept_loss()
+
+    # 2) Do alignment
     with torch.no_grad():
         for subconcept_loader in subconcept_loaders:
-            # Get a loader iterator that we can pull multiple batches from
             sc_label, loader = subconcept_loader
             loader_iter = iter(loader)
-
-            # Get the high-level concept this subconcept belongs to
             hl = sc_to_hl.get(sc_label, None)
             
-            # Set model mode to this subconcept's index for alignment
+            # Switch to single-axis alignment
             model.module.change_mode(sc_label)
             
-            # Process additional batches for this subconcept (up to batch_per_concept)
+            # Process up to batches_per_concept
             for batch_idx in range(batches_per_concept):
-                try:
-                    batch_data = next(loader_iter, None)
-                    if batch_data is None:
-                        # take away batch_idx==0 if you want to always print if we run out of batches
-                        if batch_idx == 0: print(f"[DEBUG] Empty batch encountered for subconcept {sc_label} (HL: {hl}) for batch {batch_idx+1}: No batch returned from loader. Total available batches: {len(loader)}; Dataset size: {len(loader.dataset)}")
-                        break
-                    if not len(batch_data[0]):
-                        print(f"[DEBUG] Empty image tensor for subconcept {sc_label} (HL: {hl}) for batch {batch_idx+1}: First element of batch_data is empty. Batch data: {batch_data}")
-                        break # empty batch
-                        
-                    imgs, sc_labels, _ = batch_data
-                    imgs = imgs.cuda()
-                    
-                    # Process each image in this additional batch
-                    for img in imgs:
-                        _ = model(img.unsqueeze(0))
-                except Exception as e:
-                    print(f"[DEBUG] Exception for subconcept {sc_label} (HL: {hl}) for batch {batch_idx+1}: {e}")
-                    continue
-            
-    # UPDATE ROTATION MATRIX
-    model.module.update_rotation_matrix()
+                batch_data = next(loader_iter, None)
+                if (batch_data is None) or (not len(batch_data[0])):
+                    break
+
+                imgs, sc_labels, _ = batch_data
+                imgs = imgs.cuda()
+
+                # Each image feed triggers the negative push for this axis
+                for img in imgs:
+                    _ = model(img.unsqueeze(0))
     
-    # Reset model mode for evaluation
+    # 3) Update rotation matrix
+    model.module.update_rotation_matrix()
     model.module.change_mode(-1)
+
+    # 4) Summarize concept losses
+    total_cw_loss = 0.0
+    for cw_layer in model.module.cw_layers:
+        total_cw_loss += cw_layer.get_concept_loss()
+
+    avg_cw_loss = total_cw_loss / len(model.module.cw_layers)
     
     # CALCULATE METRICS AFTER ALIGNMENT
     # Initialize metric counters
@@ -607,7 +608,8 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
     return {
         'global_top1': global_top1_pct,
         'subspace_top1': subspace_top1_pct,
-        'global_top5': global_top5_pct
+        'global_top5': global_top5_pct,
+        'concept_loss': avg_cw_loss
     }
 
 def validate(loader, model, epoch, writer, mode="Val"):
