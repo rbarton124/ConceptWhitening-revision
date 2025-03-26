@@ -461,7 +461,7 @@ def align_concepts(
     subconcept_loaders,
     concept_dataset,
     batches_per_concept,
-    lambda_=0.5
+    lambda_=0.01
 ):
     """
     Implements the full QCW objective with both:
