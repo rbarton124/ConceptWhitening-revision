@@ -63,7 +63,9 @@ class ResNetQCW(nn.Module):
                           f"with QCW layer. Expected dimension: {bn_dims[i]} channels; "
                           f"Activation mode: {act_mode}.")
                     dim = bn_dims[i]
-                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1, subspace_map=self.subspaces)
+                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1)
+                    if self.use_subspace and self.subspaces is not None:
+                        qcw.subspaces = self.subspaces  # QCW layer uses subspace information
                     block.bn1 = qcw
                     self.cw_layers.append(qcw)
         

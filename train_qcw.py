@@ -405,7 +405,6 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
     top1   = AverageMeter()
     top5   = AverageMeter()
     alignment_score = AverageMeter()  # For tracking the concept alignment score
-    concept_loss = 0.0
 
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
                 desc=f"[Train] Epoch {epoch+1}", smoothing=0.02)
@@ -439,107 +438,40 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             
             alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
             
-            concept_loss = alignment_metrics['concept_loss']
 
             writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
             writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
-            writer.add_scalar("CW/Alignment/ConceptLoss", concept_loss, iteration)
 
         postfix_dict = {"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", "Top5": f"{top5.avg:.2f}"}
         if not args.vanilla_pretrain:
             postfix_dict["Alignment"] = f"{alignment_score.avg:.2f}"
-            postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
         pbar.set_postfix(postfix_dict)
 
         writer.add_scalar("Train/Loss", losses.val, iteration)
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def align_concepts(
-    model,
-    subconcept_loaders,
-    concept_dataset,
-    batches_per_concept,
-    lambda_=0.01
-):
-    """
-    Implements the full QCW objective with both:
-      (A) Direct-labeled push for each sub-concept axis
-      (B) Subspace winner-takes-all alignment, scaled by lambda
-
-    Then does a single rotation update, and computes alignment metrics.
-
-    Args:
-      model (nn.DataParallel): The QCW model
-      subconcept_loaders (List[(sc_label, DataLoader)]): 
-          Each labeled sub-concept has an integer 'sc_label' and a loader of images for that sub-concept.
-      concept_dataset (ConceptDataset): For subspace mapping + sc->hl
-      batches_per_concept (int): How many mini-batches to sample for each sub-concept
-      lambda_ (float): weighting for the subspace/winner-takes-all portion
-
-    Returns:
-      Dict with alignment metrics: { "global_top1", "subspace_top1", "global_top5", "concept_loss" }
-    """
-    model.eval()
+def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_concept, lambda_=0.01):
 
     ############################################################################
     # Step 0: Build HL->(sc_label, loader) sets and sc->HL mapping
     ############################################################################
+    
     sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
     hl_loader_sets = defaultdict(list)
     for (sc_label, loader) in subconcept_loaders:
         hl_name = sc_to_hl.get(sc_label, "general")
         hl_loader_sets[hl_name].append((sc_label, loader))
 
-    # Reset concept-loss accumulators in each CW layer
-    for cw_layer in model.module.cw_layers:
-        cw_layer.reset_concept_loss()
-
-    ############################################################################
-    # Step A: Direct-labeled alignment pass (Term 1 in the formula)
-    ############################################################################
-    # Here we treat each sub-concept j in Q^L individually, 
-    # giving it a "single-axis" push for its images.
+    model.eval()
     with torch.no_grad():
-        for (sc_label, loader) in subconcept_loaders:
-            # sc_label is the axis index for that labeled sub-concept
-            model.module.change_mode(sc_label)  # single-axis alignment
-            loader_iter = iter(loader)
-
-            for _ in range(batches_per_concept):
-                batch_data = next(loader_iter, None)
-                if not batch_data or not len(batch_data[0]):
-                    break
-                imgs = batch_data[0].cuda()
-                for img in imgs:
-                    _ = model(img.unsqueeze(0))
-
-    # (We do not call update_rotation_matrix() yet, 
-    #  because we want to merge subspace alignment in the same gradient matrix.)
-
-    ############################################################################
-    # Step B: Subspace-based alignment pass (Term 2 in the formula), scaled by lambda
-    ############################################################################
-    # We'll let the HL subspace do winner-takes-all, 
-    # but multiply its gradient by lambda_.
-
-    # 1) Let each CW layer know we want to scale subspace gradients by lambda_:
-    for cw_layer in model.module.cw_layers:
-        cw_layer.set_subspace_scaling(lambda_)
-
-    with torch.no_grad():
-        # For each HL concept, gather all sub-concepts and feed them in subspace mode
+        # For each HL concept, gather all sub-concepts
         for hl_name, sc_list in hl_loader_sets.items():
-            # Switch each CW layer to "hl_name" subspace
-            for cw_layer in model.module.cw_layers:
-                cw_layer.clear_subspace()
-                cw_layer.set_subspace(hl_name)
-
-            model.module.change_mode(-1)  # turn off single-axis mode
 
             # Feed data from each sub-concept that belongs to HL=hl_name
             for (sc_label, sc_loader) in sc_list:
+                model.module.change_mode(sc_label)
                 loader_iter = iter(sc_loader)
                 for _ in range(batches_per_concept):
                     batch_data = next(loader_iter, None)
@@ -548,31 +480,29 @@ def align_concepts(
                     imgs = batch_data[0].cuda()
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
+            model.module.update_rotation_matrix()
+    
+        with torch.no_grad():
+            for (sc_label, loader) in subconcept_loaders:
+                # sc_label is the axis index for that labeled sub-concept
+                model.module.change_mode(sc_label)  # single-axis alignment
+                loader_iter = iter(loader)
+
+                for _ in range(batches_per_concept):
+                    batch_data = next(loader_iter, None)
+                    if not batch_data or not len(batch_data[0]):
+                        break
+                    imgs = batch_data[0].cuda()
+                    for img in imgs:
+                        _ = model(img.unsqueeze(0))
+        model.module.update_rotation_matrix()
+        
+    
 
     ############################################################################
     # Step C: Update rotation matrix once for both alignment signals
     ############################################################################
-    model.module.update_rotation_matrix()
     model.module.change_mode(-1)
-    for cw_layer in model.module.cw_layers:
-        cw_layer.clear_subspace()
-
-    ############################################################################
-    # Step D: Summarize total concept loss + alignment metrics
-    ############################################################################
-    # 1) concept_loss
-    total_cw_loss = 0.0
-    for cw_layer in model.module.cw_layers:
-        total_cw_loss += cw_layer.get_concept_loss()
-    avg_cw_loss = total_cw_loss / max(1, len(model.module.cw_layers))
-
-    # 2) compute alignment metrics (global_top1, subspace_top1, global_top5)
-    # We'll do a final pass hooking the last CW layer
-    if not model.module.cw_layers:
-        return {
-            "global_top1":0.0, "subspace_top1":0.0,
-            "global_top5":0.0, "concept_loss":avg_cw_loss
-        }
 
     last_cw = model.module.cw_layers[-1]
     hook_storage = []
@@ -645,8 +575,7 @@ def align_concepts(
     return {
         "global_top1":  g_top1_pct,
         "subspace_top1":s_top1_pct,
-        "global_top5":  g_top5_pct,
-        "concept_loss": avg_cw_loss
+        "global_top5":  g_top5_pct
     }
 
 

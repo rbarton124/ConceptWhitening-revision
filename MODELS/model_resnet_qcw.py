@@ -150,7 +150,9 @@ class ResNetQCW(nn.Module):
                         
                     # Create the CW module
                     dim = bn_dims[ln_i]
-                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1, subspace_map=self.subspaces)
+                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1)
+                    if self.use_subspace and self.subspaces is not None:
+                        qcw.subspaces = self.subspaces
 
                     # Assign it to new_block.cw
                     new_block.cw = qcw
