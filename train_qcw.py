@@ -402,10 +402,11 @@ def adjust_lr(optimizer, epoch, args):
 def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer):
     model.train()
     criterion = nn.CrossEntropyLoss().cuda()
+
     losses = AverageMeter()
     top1   = AverageMeter()
     top5   = AverageMeter()
-    alignment_score = AverageMeter()  # For tracking the concept alignment score
+    alignment_score = AverageMeter()
     concept_loss = 0.0
 
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
@@ -415,92 +416,94 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         iteration = epoch * len(train_loader) + i
         imgs, lbls = imgs.cuda(), lbls.cuda()
 
-        # Forward pass through the model
+        # Standard classification forward/backward
         outputs = model(imgs)
-
         loss = criterion(outputs, lbls)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
+        # Update classification metrics
         prec1, prec5 = accuracy_topk(outputs, lbls, (1, 5))
         losses.update(loss.item(), imgs.size(0))
         top1.update(prec1, imgs.size(0))
         top5.update(prec5, imgs.size(0))
 
-        # Concept alignment every N batches using subconcept-specific loaders
-        if args.cw_align_freq is not None and (i + 1) % args.cw_align_freq == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
-            # Skip the first loader (which is the main loader with all concepts)
-            # use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds, args.batches_per_concept, args.cw_lambda)
+        # Concept Alignment Step
+        if (args.cw_align_freq is not None 
+            and (i + 1) % args.cw_align_freq == 0 
+            and len(concept_loaders) > 1):
             
-            global_top1 = alignment_metrics['global_top1']
-            subspace_top1 = alignment_metrics['subspace_top1']
-            global_top5 = alignment_metrics['global_top5']
-            
-            alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
-            
-            concept_loss = alignment_metrics['concept_loss']
+            alignment_metrics = align_concepts(
+                model,
+                concept_loaders[1:],  # sub-concept loaders
+                concept_ds,
+                args.batches_per_concept,
+                args.cw_lambda
+            )
 
-            writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
+            # Extract the labeled concept metrics
+            global_top1   = alignment_metrics["global_top1"]
+            subspace_top1 = alignment_metrics["subspace_top1"]
+            global_top5   = alignment_metrics["global_top5"]
+            concept_loss  = alignment_metrics["concept_loss"]
+            axis_consistency = alignment_metrics["axis_consistency"]
+            axis_purity = alignment_metrics["axis_purity"]
+            act_strength_ratio = alignment_metrics["act_strength_ratio"]
+
+            # Log to TensorBoard
+            writer.add_scalar("CW/Alignment/GlobalTop1",   global_top1,   iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
-            writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
-            writer.add_scalar("CW/Alignment/ConceptLoss", concept_loss, iteration)
+            writer.add_scalar("CW/Alignment/GlobalTop5",   global_top5,   iteration)
+            writer.add_scalar("CW/Alignment/ConceptLoss",  concept_loss,  iteration)
+            writer.add_scalar("CW/FreeConcept/AxisConsistency", axis_consistency, iteration)
+            writer.add_scalar("CW/FreeConcept/AxisPurity", axis_purity,  iteration)
+            writer.add_scalar("CW/FreeConcept/ActStrengthRatio", act_strength_ratio, iteration)
 
-        postfix_dict = {"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", "Top5": f"{top5.avg:.2f}"}
+            alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
+
+        # TQDM postfix update
+        postfix_dict = {
+            "Loss": f"{losses.avg:.3f}",
+            "Top1": f"{top1.avg:.2f}",
+            "Top5": f"{top5.avg:.2f}"
+        }
         if not args.vanilla_pretrain:
-            postfix_dict["Alignment"] = f"{alignment_score.avg:.2f}"
+            postfix_dict["Align"]  = f"{alignment_score.avg:.2f}"
             postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
         pbar.set_postfix(postfix_dict)
 
-        writer.add_scalar("Train/Loss", losses.val, iteration)
-        writer.add_scalar("Train/Top1", top1.val, iteration)
-        writer.add_scalar("Train/Top5", top5.val, iteration)
+        writer.add_scalar("Loss", losses.val, iteration)
+        writer.add_scalar("Top1", top1.val, iteration)
+        writer.add_scalar("Top5", top5.val, iteration)
 
-def align_concepts(
-    model,
-    subconcept_loaders,
-    concept_dataset,
-    batches_per_concept,
-    lambda_
-):
+def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_concept, lambda_):
     """
     Align concepts in a two-phase approach per high-level concept:
       1. Single-axis push for labeled sub-concepts only
       2. Winner-takes-all subspace alignment for free sub-concepts only
-    Then do a single rotation update, and compute alignment metrics for all.
-
-    Args:
-      model (nn.DataParallel): The QCW model
-      subconcept_loaders (List[(sc_label, DataLoader)]): 
-          Each sub-concept index 'sc_label' with a loader of images.
-      concept_dataset (ConceptDataset): For subspace mapping + sc->hl + free/labeled distinctions
-      batches_per_concept (int): # mini-batches to sample per sub-concept
-      lambda_ (float): scaling factor for free subspace alignment
-
+    Then do a single rotation update, and compute metrics (including
+    new free-concept metrics).
     Returns:
-      Dict with alignment metrics: { "global_top1", "subspace_top1", "global_top5", "concept_loss" }
+      Dict with metrics: { "global_top1", "subspace_top1", "global_top5", "concept_loss", "axis_consistency", "axis_purity", "act_strength_ratio" }
     """
     model.eval()
 
-    # Step 0: Group sub-concepts by high-level concept
-    #         sc_to_hl_name[sc_label] -> "wing", "beak", etc.
-    #         and track which sc_labels are free vs. labeled.
+    # Separate sub-concepts into labeled vs. free by HL
     sc_to_hl_name = concept_dataset.get_subconcept_to_hl_name_mapping()
     hl_subconcepts = defaultdict(lambda: {"labeled": [], "free": []})
 
+    label_to_scname = {}
     for (sc_label, loader) in subconcept_loaders:
-        hl_name = sc_to_hl_name.get(sc_label, "general")
-        # Check if sc_label is free or labeled
-        # We'll invert the sc2idx to get sc_name
-        # (We can skip the invert if we stored it in the dictionary from the start.)
-        sc_name = None
         for name, idx in concept_dataset.sc2idx.items():
             if idx == sc_label:
-                sc_name = name
+                label_to_scname[sc_label] = name
                 break
 
-        if sc_name and concept_dataset.is_free_subconcept_name(sc_name):
+    for (sc_label, loader) in subconcept_loaders:
+        hl_name = sc_to_hl_name.get(sc_label, "general")
+        sc_name = label_to_scname[sc_label]
+        if concept_dataset.is_free_subconcept_name(sc_name):
             hl_subconcepts[hl_name]["free"].append((sc_label, loader))
         else:
             hl_subconcepts[hl_name]["labeled"].append((sc_label, loader))
@@ -509,18 +512,12 @@ def align_concepts(
     for cw_layer in model.module.cw_layers:
         cw_layer.reset_concept_loss()
 
-    ###########################################################################
-    # Step A: Single-axis push for labeled sub-concepts (Term 1 in the formula)
-    ###########################################################################
-    # For each HL concept, we push all labeled sub-concepts individually.
+    # Single-axis push for labeled sub-concepts
     with torch.no_grad():
         for hl_name, groups in hl_subconcepts.items():
-            labeled_list = groups["labeled"]
-            # For each labeled sub-concept in this HL
-            for (sc_label, sc_loader) in labeled_list:
+            for (sc_label, sc_loader) in groups["labeled"]:
                 model.module.change_mode(sc_label)  # single-axis alignment
                 loader_iter = iter(sc_loader)
-
                 for _ in range(batches_per_concept):
                     batch_data = next(loader_iter, None)
                     if not batch_data or not len(batch_data[0]):
@@ -529,13 +526,7 @@ def align_concepts(
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
 
-    # We haven't called update_rotation_matrix() yet because we also want to incorporate
-    # free concept alignment signals into the same rotation update.
-
-    ###########################################################################
-    # Step B: Subspace-based alignment for free sub-concepts, scaled by lambda_
-    ###########################################################################
-    # For free sub-concepts in each HL, do winner-takes-all.
+    # Subspace-based alignment for free sub-concepts, scaled by lambda_
     for cw_layer in model.module.cw_layers:
         cw_layer.set_subspace_scaling(lambda_)
 
@@ -550,12 +541,8 @@ def align_concepts(
                 cw_layer.clear_subspace()
                 cw_layer.set_subspace(hl_name)
 
-            # single-axis alignment is turned off => mode = -1
-            model.module.change_mode(-1)
+            model.module.change_mode(-1)  # subspace-based alignment
 
-            # Now feed each free sub-concept in that HL
-            # They collectively do winner-takes-all among themselves (plus possibly labeled axes,
-            # if you want them in the same subspace or not).
             for (sc_label, sc_loader) in free_list:
                 loader_iter = iter(sc_loader)
                 for _ in range(batches_per_concept):
@@ -566,54 +553,85 @@ def align_concepts(
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
 
-    ###########################################################################
-    # Step C: Update rotation matrix once for all alignment
-    ###########################################################################
+    # Update rotation matrix (single update for all alignment)
     model.module.update_rotation_matrix()
     model.module.change_mode(-1)
     for cw_layer in model.module.cw_layers:
         cw_layer.clear_subspace()
-        cw_layer.set_subspace_scaling(1.0)  # reset the subspace scaling
+        cw_layer.set_subspace_scaling(1.0)
+    model.module.update_rotation_matrix()
+    model.module.change_mode(-1)
+    for cw_layer in model.module.cw_layers:
+        cw_layer.clear_subspace()
+        cw_layer.set_subspace_scaling(1.0)
 
-    ###########################################################################
-    # Step D: Summarize concept loss + alignment metrics
-    ###########################################################################
-    # 1) concept_loss
+    # Summarize concept loss + alignment metrics
+    # concept_loss
     total_cw_loss = 0.0
     for cw_layer in model.module.cw_layers:
         total_cw_loss += cw_layer.get_concept_loss()
     avg_cw_loss = total_cw_loss / max(1, len(model.module.cw_layers))
 
-    # 2) alignment metrics across *all sub-concepts*
-    #    We'll use the last CW layer for measuring top-1, top-5, subspace top-1.
-    if not model.module.cw_layers:
-        return {
-            "global_top1": 0.0,
-            "subspace_top1": 0.0,
-            "global_top5": 0.0,
-            "concept_loss": avg_cw_loss
-        }
+    # alignment metrics
+    metrics = compute_alignment_metrics(
+        model, subconcept_loaders, concept_dataset,
+        batches_per_concept, label_to_scname
+    )
+    return {
+        "global_top1":  metrics["labeled_top1"],
+        "subspace_top1": metrics["labeled_subspace_top1"],
+        "global_top5":  metrics["labeled_top5"],
+        "concept_loss": avg_cw_loss,
+        "axis_consistency": metrics["axis_consistency"],
+        "axis_purity": metrics["axis_purity"],
+        "act_strength_ratio": metrics["act_strength_ratio"]
+    }
 
-    last_cw = model.module.cw_layers[-1]
+
+
+def compute_alignment_metrics(model, subconcept_loaders, concept_dataset, batches_per_concept, label_to_scname):
+    """
+    Runs a forward pass on each sub-concept loader to measure:
+      1) Labeled sub-concept metrics (excluding free sub-concepts):
+         - global_top1, global_top5, subspace_top1
+      2) Free sub-concept metrics:
+         - axis_consistency, axis_purity, activation_strength_ratio
+    Returns:
+      Dict with metrics: { "global_top1", "subspace_top1", "global_top5", "axis_consistency", "axis_purity", "act_strength_ratio" }
+    """
+    labeled_top1_correct = 0
+    labeled_top5_correct = 0
+    labeled_subspace_correct = 0
+    labeled_total = 0
+
+    axis_usage_by_sc = defaultdict(lambda: defaultdict(int))  # axis_usage_by_sc[sc_label][axis] = usage_count
+    free_img_count = defaultdict(int)                          # total #images for each free sc_label
+    free_chosen_act_sum = defaultdict(float)                  # sum of chosen-axis activation for each free sc_label
+
+    labeled_axis_act_sum = defaultdict(float)  # labeled_axis_act_sum[sc_label]
+    labeled_axis_count = defaultdict(int)
+
+    sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
+    subspace_map = concept_dataset.subspace_mapping
+
+    last_cw = model.module.cw_layers[-1] if model.module.cw_layers else None
+    if not last_cw:
+        return {"labeled_top1": 0.0, "labeled_top5": 0.0, "labeled_subspace_top1": 0.0, "axis_consistency": 0.0, "axis_purity": 0.0, "act_strength_ratio": 0.0}
+
     hook_storage = []
-
     def forward_hook(module, inp, out):
         hook_storage.append(out)
 
     handle = last_cw.register_forward_hook(forward_hook)
-
-    global_top1_correct   = 0
-    global_top5_correct   = 0
-    subspace_top1_correct = 0
-    total_samples         = 0
-
-    # We want to measure alignment for both labeled + free sub-concepts
-    # => we'll unify them by reusing the original subconcept_loaders.
     model.eval()
+
+    # Labelled sub-concept metrics
     with torch.no_grad():
         for (sc_label, loader) in subconcept_loaders:
-            hl_name = sc_to_hl_name.get(sc_label, "general")
-            subspace_axes = concept_dataset.subspace_mapping.get(hl_name, [])
+            sc_name = label_to_scname[sc_label]
+            is_free = concept_dataset.is_free_subconcept_name(sc_name)
+            hl_name = sc_to_hl.get(sc_label, "general")
+            subspace_axes = subspace_map.get(hl_name, [])
 
             loader_iter = iter(loader)
             for _ in range(batches_per_concept):
@@ -624,48 +642,118 @@ def align_concepts(
 
                 for img in imgs:
                     _ = model(img.unsqueeze(0))
-                    if hook_storage:
-                        featmap = hook_storage[0]  # [1, C, H, W]
-                        hook_storage.clear()
-                        feat_avg = featmap.mean(dim=(2,3)).squeeze(0)  # shape [C]
+                    if not hook_storage:
+                        continue
 
-                        # Global top-1
-                        global_pred = feat_avg.argmax().item()
-                        if global_pred == sc_label:
-                            global_top1_correct += 1
+                    featmap = hook_storage[0]  # shape [1, C, H, W]
+                    hook_storage.clear()
 
-                        # Global top-5
-                        _, top5_inds = feat_avg.topk(5)
-                        if sc_label in top5_inds:
-                            global_top5_correct += 1
+                    # Average spatial dims
+                    feat_avg = featmap.mean(dim=(2,3)).squeeze(0)  # shape [C]
+                    top1_axis = feat_avg.argmax().item()
+                    top5_axes = feat_avg.topk(5)[1].tolist()
 
-                        # Subspace top-1
+                    # Record for axis usage
+                    axis_usage_by_sc[sc_label][top1_axis] += 1
+
+                    if is_free:
+                        # count images, sum chosen-axis activation
+                        free_img_count[sc_label] += 1
+                        free_chosen_act_sum[sc_label] += float(feat_avg[top1_axis].item())
+                    else:
+                        # global top-1
+                        if top1_axis == sc_label:
+                            labeled_top1_correct += 1
+                        # global top-5
+                        if sc_label in top5_axes:
+                            labeled_top5_correct += 1
+                        # subspace top-1
                         if subspace_axes:
-                            sub_acts = feat_avg[subspace_axes]
-                            local_winner = sub_acts.argmax().item()
-                            global_axis = subspace_axes[local_winner]
-                            if global_axis == sc_label:
-                                subspace_top1_correct += 1
+                            local_sub_acts = feat_avg[subspace_axes]
+                            local_winner_idx = local_sub_acts.argmax().item()
+                            global_winner_axis = subspace_axes[local_winner_idx]
+                            if global_winner_axis == sc_label:
+                                labeled_subspace_correct += 1
+                        labeled_total += 1
 
-                        total_samples += 1
+                        # Track average activation on "this" axis sc_label
+                        if sc_label < len(feat_avg):
+                            labeled_axis_act_sum[sc_label] += float(feat_avg[sc_label].item())
+                            labeled_axis_count[sc_label] += 1
 
     handle.remove()
     model.train()
 
-    if total_samples > 0:
-        g_top1_pct  = 100.0 * global_top1_correct / total_samples
-        g_top5_pct  = 100.0 * global_top5_correct / total_samples
-        s_top1_pct  = 100.0 * subspace_top1_correct / total_samples
+    if labeled_total > 0:
+        labeled_top1_pct = 100.0 * labeled_top1_correct / labeled_total
+        labeled_top5_pct = 100.0 * labeled_top5_correct / labeled_total
+        labeled_subspace_pct = 100.0 * labeled_subspace_correct / labeled_total
     else:
-        g_top1_pct  = 0.0
-        g_top5_pct  = 0.0
-        s_top1_pct  = 0.0
+        labeled_top1_pct = labeled_top5_pct = labeled_subspace_pct = 0.0
 
+    # Free concept metrics
+    for sc_label, axis_counts in axis_usage_by_sc.items():
+        sc_name = label_to_scname[sc_label]
+        if not concept_dataset.is_free_subconcept_name(sc_name):
+            continue
+
+        total_images = free_img_count[sc_label]
+        if total_images <= 0:
+            axis_consistency = axis_purity = act_strength_ratio = 0.0
+            continue
+
+        # Axis Consistency: pick the axis with the highest usage count => "dominant axis"
+        best_axis, best_count = max(axis_counts.items(), key=lambda x: x[1])
+        axis_consistency = 100.0 * best_count / float(total_images)
+
+        # Axis Purity: measure how often that best_axis is used by other sub-concepts in the same HL
+        hl_name = sc_to_hl[sc_label]
+        used_by_others = 0
+        # Count usage of best_axis by other sub-concepts in the same HL
+        for (other_label, _) in subconcept_loaders:
+            if other_label == sc_label:
+                continue
+            # if they belong to same HL, accumulate usage
+            other_hl = sc_to_hl.get(other_label, "general")
+            if other_hl == hl_name:
+                used_by_others += axis_usage_by_sc[other_label].get(best_axis, 0)
+
+        purity_den = best_count + used_by_others
+        axis_purity = 100.0 * best_count / purity_den if purity_den > 0 else 100.0
+
+        # Activation Strength Ratio: compare chosen-axis activation by this free concept vs. average labeled axis activation in the same HL
+        free_avg_act = free_chosen_act_sum[sc_label] / float(total_images)
+        # gather labeled sub-concepts from same HL
+        sum_labeled_act = 0.0
+        count_labeled_act = 0
+        for (lab_label, _) in subconcept_loaders:
+            if lab_label == sc_label:
+                continue
+            if sc_to_hl.get(lab_label, "general") == hl_name:
+                # accumulate average axis activation for that labeled concept => labeled_axis_act_sum[lab_label] / labeled_axis_count[lab_label]
+                if labeled_axis_count[lab_label] > 0:
+                    sum_labeled_act += (
+                        labeled_axis_act_sum[lab_label] / labeled_axis_count[lab_label]
+                    )
+                    count_labeled_act += 1
+
+        if count_labeled_act > 0:
+            labeled_mean = sum_labeled_act / float(count_labeled_act)
+            if labeled_mean > 1e-9:
+                act_strength_ratio = 100.0 * (free_avg_act / labeled_mean)
+            else:
+                act_strength_ratio = 100.0
+        else:
+            act_strength_ratio = -1.0
+
+    # Return all aggregated metrics
     return {
-        "global_top1":  g_top1_pct,
-        "subspace_top1": s_top1_pct,
-        "global_top5":  g_top5_pct,
-        "concept_loss": avg_cw_loss
+        "labeled_top1": labeled_top1_pct,
+        "labeled_top5": labeled_top5_pct,
+        "labeled_subspace_top1": labeled_subspace_pct,
+        "axis_consistency": axis_consistency,
+        "axis_purity": axis_purity,
+        "act_strength_ratio": act_strength_ratio
     }
 
 
