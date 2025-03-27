@@ -62,6 +62,7 @@ parser.add_argument("--batches_per_concept", type=int, default=1, help="Number o
 parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in mini-batches) we do concept alignment.")
 parser.add_argument("--use_bn_qcw", action="store_true",
                     help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
+parser.add_argument("--cw_lambda", type=float, default=0.1, help="Lambda parameter for QCW.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
@@ -431,7 +432,7 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         if args.cw_align_freq is not None and (i + 1) % args.cw_align_freq == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
             # Skip the first loader (which is the main loader with all concepts)
             # use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds, args.batches_per_concept)
+            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds, args.batches_per_concept, args.cw_lambda)
             
             global_top1 = alignment_metrics['global_top1']
             subspace_top1 = alignment_metrics['subspace_top1']
@@ -461,85 +462,101 @@ def align_concepts(
     subconcept_loaders,
     concept_dataset,
     batches_per_concept,
-    lambda_=0.5
+    lambda_
 ):
     """
-    Implements the full QCW objective with both:
-      (A) Direct-labeled push for each sub-concept axis
-      (B) Subspace winner-takes-all alignment, scaled by lambda
-
-    Then does a single rotation update, and computes alignment metrics.
+    Align concepts in a two-phase approach per high-level concept:
+      1. Single-axis push for labeled sub-concepts only
+      2. Winner-takes-all subspace alignment for free sub-concepts only
+    Then do a single rotation update, and compute alignment metrics for all.
 
     Args:
       model (nn.DataParallel): The QCW model
       subconcept_loaders (List[(sc_label, DataLoader)]): 
-          Each labeled sub-concept has an integer 'sc_label' and a loader of images for that sub-concept.
-      concept_dataset (ConceptDataset): For subspace mapping + sc->hl
-      batches_per_concept (int): How many mini-batches to sample for each sub-concept
-      lambda_ (float): weighting for the subspace/winner-takes-all portion
+          Each sub-concept index 'sc_label' with a loader of images.
+      concept_dataset (ConceptDataset): For subspace mapping + sc->hl + free/labeled distinctions
+      batches_per_concept (int): # mini-batches to sample per sub-concept
+      lambda_ (float): scaling factor for free subspace alignment
 
     Returns:
       Dict with alignment metrics: { "global_top1", "subspace_top1", "global_top5", "concept_loss" }
     """
     model.eval()
 
-    ############################################################################
-    # Step 0: Build HL->(sc_label, loader) sets and sc->HL mapping
-    ############################################################################
-    sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
-    hl_loader_sets = defaultdict(list)
+    # Step 0: Group sub-concepts by high-level concept
+    #         sc_to_hl_name[sc_label] -> "wing", "beak", etc.
+    #         and track which sc_labels are free vs. labeled.
+    sc_to_hl_name = concept_dataset.get_subconcept_to_hl_name_mapping()
+    hl_subconcepts = defaultdict(lambda: {"labeled": [], "free": []})
+
     for (sc_label, loader) in subconcept_loaders:
-        hl_name = sc_to_hl.get(sc_label, "general")
-        hl_loader_sets[hl_name].append((sc_label, loader))
+        hl_name = sc_to_hl_name.get(sc_label, "general")
+        # Check if sc_label is free or labeled
+        # We'll invert the sc2idx to get sc_name
+        # (We can skip the invert if we stored it in the dictionary from the start.)
+        sc_name = None
+        for name, idx in concept_dataset.sc2idx.items():
+            if idx == sc_label:
+                sc_name = name
+                break
+
+        if sc_name and concept_dataset.is_free_subconcept_name(sc_name):
+            hl_subconcepts[hl_name]["free"].append((sc_label, loader))
+        else:
+            hl_subconcepts[hl_name]["labeled"].append((sc_label, loader))
 
     # Reset concept-loss accumulators in each CW layer
     for cw_layer in model.module.cw_layers:
         cw_layer.reset_concept_loss()
 
-    ############################################################################
-    # Step A: Direct-labeled alignment pass (Term 1 in the formula)
-    ############################################################################
-    # Here we treat each sub-concept j in Q^L individually, 
-    # giving it a "single-axis" push for its images.
+    ###########################################################################
+    # Step A: Single-axis push for labeled sub-concepts (Term 1 in the formula)
+    ###########################################################################
+    # For each HL concept, we push all labeled sub-concepts individually.
     with torch.no_grad():
-        for (sc_label, loader) in subconcept_loaders:
-            # sc_label is the axis index for that labeled sub-concept
-            model.module.change_mode(sc_label)  # single-axis alignment
-            loader_iter = iter(loader)
+        for hl_name, groups in hl_subconcepts.items():
+            labeled_list = groups["labeled"]
+            # For each labeled sub-concept in this HL
+            for (sc_label, sc_loader) in labeled_list:
+                model.module.change_mode(sc_label)  # single-axis alignment
+                loader_iter = iter(sc_loader)
 
-            for _ in range(batches_per_concept):
-                batch_data = next(loader_iter, None)
-                if not batch_data or not len(batch_data[0]):
-                    break
-                imgs = batch_data[0].cuda()
-                for img in imgs:
-                    _ = model(img.unsqueeze(0))
+                for _ in range(batches_per_concept):
+                    batch_data = next(loader_iter, None)
+                    if not batch_data or not len(batch_data[0]):
+                        break
+                    imgs = batch_data[0].cuda()
+                    for img in imgs:
+                        _ = model(img.unsqueeze(0))
 
-    # (We do not call update_rotation_matrix() yet, 
-    #  because we want to merge subspace alignment in the same gradient matrix.)
+    # We haven't called update_rotation_matrix() yet because we also want to incorporate
+    # free concept alignment signals into the same rotation update.
 
-    ############################################################################
-    # Step B: Subspace-based alignment pass (Term 2 in the formula), scaled by lambda
-    ############################################################################
-    # We'll let the HL subspace do winner-takes-all, 
-    # but multiply its gradient by lambda_.
-
-    # 1) Let each CW layer know we want to scale subspace gradients by lambda_:
+    ###########################################################################
+    # Step B: Subspace-based alignment for free sub-concepts, scaled by lambda_
+    ###########################################################################
+    # For free sub-concepts in each HL, do winner-takes-all.
     for cw_layer in model.module.cw_layers:
         cw_layer.set_subspace_scaling(lambda_)
 
     with torch.no_grad():
-        # For each HL concept, gather all sub-concepts and feed them in subspace mode
-        for hl_name, sc_list in hl_loader_sets.items():
-            # Switch each CW layer to "hl_name" subspace
+        for hl_name, groups in hl_subconcepts.items():
+            free_list = groups["free"]
+            if not free_list:
+                continue
+
+            # Tell each CW layer we are in subspace=hl_name
             for cw_layer in model.module.cw_layers:
                 cw_layer.clear_subspace()
                 cw_layer.set_subspace(hl_name)
 
-            model.module.change_mode(-1)  # turn off single-axis mode
+            # single-axis alignment is turned off => mode = -1
+            model.module.change_mode(-1)
 
-            # Feed data from each sub-concept that belongs to HL=hl_name
-            for (sc_label, sc_loader) in sc_list:
+            # Now feed each free sub-concept in that HL
+            # They collectively do winner-takes-all among themselves (plus possibly labeled axes,
+            # if you want them in the same subspace or not).
+            for (sc_label, sc_loader) in free_list:
                 loader_iter = iter(sc_loader)
                 for _ in range(batches_per_concept):
                     batch_data = next(loader_iter, None)
@@ -549,29 +566,32 @@ def align_concepts(
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
 
-    ############################################################################
-    # Step C: Update rotation matrix once for both alignment signals
-    ############################################################################
+    ###########################################################################
+    # Step C: Update rotation matrix once for all alignment
+    ###########################################################################
     model.module.update_rotation_matrix()
     model.module.change_mode(-1)
     for cw_layer in model.module.cw_layers:
         cw_layer.clear_subspace()
+        cw_layer.set_subspace_scaling(1.0)  # reset the subspace scaling
 
-    ############################################################################
-    # Step D: Summarize total concept loss + alignment metrics
-    ############################################################################
+    ###########################################################################
+    # Step D: Summarize concept loss + alignment metrics
+    ###########################################################################
     # 1) concept_loss
     total_cw_loss = 0.0
     for cw_layer in model.module.cw_layers:
         total_cw_loss += cw_layer.get_concept_loss()
     avg_cw_loss = total_cw_loss / max(1, len(model.module.cw_layers))
 
-    # 2) compute alignment metrics (global_top1, subspace_top1, global_top5)
-    # We'll do a final pass hooking the last CW layer
+    # 2) alignment metrics across *all sub-concepts*
+    #    We'll use the last CW layer for measuring top-1, top-5, subspace top-1.
     if not model.module.cw_layers:
         return {
-            "global_top1":0.0, "subspace_top1":0.0,
-            "global_top5":0.0, "concept_loss":avg_cw_loss
+            "global_top1": 0.0,
+            "subspace_top1": 0.0,
+            "global_top5": 0.0,
+            "concept_loss": avg_cw_loss
         }
 
     last_cw = model.module.cw_layers[-1]
@@ -582,20 +602,20 @@ def align_concepts(
 
     handle = last_cw.register_forward_hook(forward_hook)
 
-    # We'll measure how often sc_label is the global top or top-5, 
-    # and whether it is the top axis in subspace
     global_top1_correct   = 0
     global_top5_correct   = 0
     subspace_top1_correct = 0
     total_samples         = 0
 
+    # We want to measure alignment for both labeled + free sub-concepts
+    # => we'll unify them by reusing the original subconcept_loaders.
     model.eval()
     with torch.no_grad():
         for (sc_label, loader) in subconcept_loaders:
-            hl_name = sc_to_hl.get(sc_label, "general")
+            hl_name = sc_to_hl_name.get(sc_label, "general")
             subspace_axes = concept_dataset.subspace_mapping.get(hl_name, [])
-            loader_iter = iter(loader)
 
+            loader_iter = iter(loader)
             for _ in range(batches_per_concept):
                 batch_data = next(loader_iter, None)
                 if not batch_data or not len(batch_data[0]):
@@ -605,22 +625,21 @@ def align_concepts(
                 for img in imgs:
                     _ = model(img.unsqueeze(0))
                     if hook_storage:
-                        featmap = hook_storage[0]
+                        featmap = hook_storage[0]  # [1, C, H, W]
                         hook_storage.clear()
-                        # featmap shape: [1, C, H, W]
-                        feat_avg = featmap.mean(dim=(2,3)).squeeze(0)  # [C]
+                        feat_avg = featmap.mean(dim=(2,3)).squeeze(0)  # shape [C]
 
-                        # global top-1
+                        # Global top-1
                         global_pred = feat_avg.argmax().item()
                         if global_pred == sc_label:
                             global_top1_correct += 1
 
-                        # global top-5
+                        # Global top-5
                         _, top5_inds = feat_avg.topk(5)
                         if sc_label in top5_inds:
                             global_top5_correct += 1
 
-                        # subspace top-1
+                        # Subspace top-1
                         if subspace_axes:
                             sub_acts = feat_avg[subspace_axes]
                             local_winner = sub_acts.argmax().item()
@@ -644,7 +663,7 @@ def align_concepts(
 
     return {
         "global_top1":  g_top1_pct,
-        "subspace_top1":s_top1_pct,
+        "subspace_top1": s_top1_pct,
         "global_top5":  g_top5_pct,
         "concept_loss": avg_cw_loss
     }
