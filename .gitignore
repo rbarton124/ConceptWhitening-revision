@@ -67,9 +67,16 @@ desktop.ini
 # Log files
 *.log
 
+# sbatch files
+*.sh
+
 data/
 runs/
+logs/
+runs_proper/
+dataset_scripts/logs/
 checkpoints/
 old-runs/
 old-runs2/
 kaggle.json
+requirements.txt

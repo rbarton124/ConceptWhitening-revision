@@ -1,4 +1,4 @@
-name: CW-old
+name: QCW
 channels:
     - pytorch
     - nvidia
