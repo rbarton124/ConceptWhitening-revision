@@ -3,8 +3,6 @@ import os
 import time
 import random
 import shutil
-import json
-import numpy as np
 
 import torch
 import torch.nn as nn
@@ -13,64 +11,88 @@ import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
+from collections import defaultdict
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from PIL import ImageFile
 
-from types import SimpleNamespace
+ImageFile.LOAD_TRUNCATED_IMAGES = True # allow loading truncated images
 
-ImageFile.LOAD_TRUNCATED_IMAGES = True # ensure truncated images are loadable JIC
-
-from MODELS.model_resnet_qcw import build_resnet_qcw, NUM_CLASSES, get_last_qcw_layer
+from MODELS.model_resnet_qcw import build_resnet_qcw, ResNetQCW, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
-########################
-# Global Constants
-########################
-LR_DECAY_FACTOR = 0.1
-LR_DECAY_EPOCH  = 50
-CROP_SIZE       = 224
-RESIZE_SIZE     = 256
-CW_ALIGN_FREQ   = 40   # how often (in mini-batches) we do concept alignment
-PIN_MEMORY      = True
-ALIGNMENT_BATCHES_PER_STEP = 4
-
-########################
 # Argument Parser
-########################
 parser = argparse.ArgumentParser(description="Train Quantized Concept Whitening (QCW) - Revised")
+
+# Required arguments
 parser.add_argument("--data_dir", required=True, help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")
 parser.add_argument("--concept_dir", required=True, help="Path to concept dataset with concept_train/, concept_val/ (optional), and bboxes.json.")
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
+parser.add_argument("--dataset", type=str, default="CUB", choices=["CUB", "COCO"], help="Dataset to use: CUB or COCO (default: CUB)")
+# Model hyperparams
 parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
 parser.add_argument("--act_mode", default="pool_max", help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
 # Training hyperparams
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
-parser.add_argument("--lr", type=float, default=0.1, help="Initial learning rate.")
+parser.add_argument("--lr", type=float, default=0.2, help="Initial learning rate.")
+parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
+parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
+# CW Training hyperparams
+parser.add_argument("--batches_per_concept", type=int, default=1, help="Number of batches per subconcept for each alignment step.")
+parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in mini-batches) we do concept alignment.")
+parser.add_argument("--use_bn_qcw", action="store_true",
+                    help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
+parser.add_argument("--cw_lambda", type=float, default=0.1, help="Lambda parameter for QCW.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
-
-parser.add_argument("--seed", type=int, default=1234, help="Random seed.")
+# System
+parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
+parser.add_argument("--log_dir", type=str, default="runs_proper", help="Directory to save logs.")
+parser.add_argument("--checkpoint_dir", type=str, default="checkpoints-new", help="Directory to save checkpoints.")
 # Feature toggles
-parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.")
+parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
-# Still need to add this logic in!
-parser.add_argument("--cw_loss_weight", type=float, default=1.0, help="Weight for QCW loss in alignment, if integrated alignment code.")
 
 args = parser.parse_args()
 
-########################
+# Global Constants
+CROP_SIZE       = 224
+RESIZE_SIZE     = 256
+PIN_MEMORY      = True
+
+if args.dataset == "CUB":
+    NUM_CLASSES = 200
+elif args.dataset == "COCO":
+    NUM_CLASSES = 80
+else:
+    raise ValueError(f"Unsupported dataset: {args.dataset}")
+
 # Setup
-########################
+if args.vanilla_pretrain:
+    print("Vanilla pretraining mode: Disabling Concept Whitening and related arguments.")
+    args.whitened_layers = []
+    args.batches_per_concept = None
+    args.cw_align_freq = None
+else:
+    try:
+        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]  # Convert to list of integers
+    except ValueError:
+        print("Invalid whitened_layers format. Should be a comma-separated list of integers.")
+        if args.whitened_layers == '':
+            args.whitened_layers = []
+            print("Setting whitened_layers to empty list. Please set vanilla_pretrain=True instead.")
+        exit(1)
+
 print("=========== ARGUMENTS ===========")
 for k,v in sorted(vars(args).items()):
     print(f"{k}: {v}")
@@ -81,20 +103,18 @@ torch.cuda.manual_seed_all(args.seed)
 random.seed(args.seed)
 cudnn.benchmark = True
 
-writer = SummaryWriter(log_dir=os.path.join("runs", f"{args.prefix}_{int(time.time())}"))
+writer = SummaryWriter(log_dir=os.path.join(args.log_dir, f"{args.prefix}_{int(time.time())}"))
 
-########################
 # Build Main Dataloaders
-########################
 def build_main_loaders(args):
-    # transforms for train
+    # train transforms
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(CROP_SIZE),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
     ])
-    # transforms for val/test
+    # val/test transforms
     val_transform = transforms.Compose([
         transforms.Resize(RESIZE_SIZE),
         transforms.CenterCrop(CROP_SIZE),
@@ -121,22 +141,21 @@ def build_main_loaders(args):
 
 train_loader, val_loader, test_loader = build_main_loaders(args)
 
-########################
 # Build Concept Dataset
-########################
 def build_concept_loaders(args):
     """
     Build concept loaders for concept_train:
-    1. A main loader with all subconcepts (for general use)
-    2. Individual loaders for each subconcept (for proper alignment)
+    1. Main loader with all subconcepts
+    2. Individual loaders for each subconcept for alignment
     
-    The revised ConceptDataset physically crops or redacts images, so the model sees normal images.
+    ConceptDataset handles image cropping/redaction directly.
     """
+    # skip concept loaders for vanilla pretraining
     concept_root = os.path.join(args.concept_dir, "concept_train")
     if not args.bboxes:
         args.bboxes = os.path.join(args.concept_dir, "bboxes.json")
 
-    # Similar transforms as train
+    # concept transforms (similar to train)
     concept_transform = transforms.Compose([
         transforms.RandomResizedCrop(CROP_SIZE),
         transforms.RandomHorizontalFlip(),
@@ -146,9 +165,9 @@ def build_concept_loaders(args):
 
     hl_list = [x.strip() for x in args.concepts.split(",")]
 
-    crop_mode = "crop" # redaction mode for dataset, clean this up later
+    crop_mode = "crop" # how to handle bounding boxes
 
-    # Main concept dataset with all subconcepts
+    # create main concept dataset
     concept_dataset = ConceptDataset(
         root_dir=concept_root,
         bboxes_file=args.bboxes,
@@ -157,7 +176,7 @@ def build_concept_loaders(args):
         crop_mode=crop_mode
     )
 
-    # Main loader with all subconcepts (shuffled)
+    # main concept loader (shuffled)
     main_concept_loader = DataLoader(
         concept_dataset,
         batch_size=args.batch_size,
@@ -168,7 +187,7 @@ def build_concept_loaders(args):
 
     subconcept_loaders = []
     
-    # Group samples by subconcept
+    # group by subconcept
     subconcept_samples = {}
     for idx, (_, _, hl_name, sc_name) in enumerate(concept_dataset.samples):
         # Get the subconcept label from the subconcept name
@@ -178,15 +197,15 @@ def build_concept_loaders(args):
             subconcept_samples[sc_label] = []
         subconcept_samples[sc_label].append(idx)
     
-    # Create a filtered dataset for each subconcept
+    # create dataset for each subconcept
     for sc_label, indices in subconcept_samples.items():
-        # Use PyTorch's Subset to create a filtered dataset
+        # filtered dataset via PyTorch Subset
         sc_dataset = torch.utils.data.Subset(concept_dataset, indices)
         
-        # Create a loader for this subconcept
+        # loader for this subconcept
         sc_loader = DataLoader(
             sc_dataset,
-            batch_size=min(args.batch_size, len(indices)),  # Handle small subconcepts
+            batch_size=min(args.batch_size, len(indices)),  # for small subconcepts
             shuffle=True,
             num_workers=args.workers,
             pin_memory=PIN_MEMORY
@@ -195,81 +214,83 @@ def build_concept_loaders(args):
     
     print(f"Created {len(subconcept_loaders)} subconcept-specific loaders")
 
-    # Add main concept loader with label -1
+    # add main loader with label -1
     concept_loaders = [(-1, main_concept_loader)] + subconcept_loaders
     
-    # Return both the main loader and subconcept-specific loaders
+    # return both loaders
     return concept_loaders, concept_dataset
-
-concept_loaders, concept_ds = build_concept_loaders(args)
-subconcept_loaders = concept_loaders[1:]
 
 print(f"[Data] #Main Train: {len(train_loader.dataset)}")
 print(f"[Data] #Val:        {len(val_loader.dataset)}")
 print(f"[Data] #Test:       {len(test_loader.dataset)}")
-print(f"[Data] #Concept:    {len(concept_loaders[0][1].dataset)}")
-print(f"[Data] #Subconcept Loaders: {len(concept_loaders) - 1}")
 
-# Print detailed information about the concept dataset
-print("\n===== CONCEPT DATASET DETAILS =====")
-print(f"Total number of samples: {len(concept_ds.samples)}")
-print(f"Total number of subconcepts: {concept_ds.get_num_subconcepts()}")
-print(f"Total number of high-level concepts: {concept_ds.get_num_high_level()}")
+concept_loaders, concept_ds, subconcept_loaders, subspaces = None, None, None, None # init vars for vanilla pretraining
+# build concept loaders if needed
+if not args.vanilla_pretrain:
+    concept_loaders, concept_ds = build_concept_loaders(args)
+    subconcept_loaders = concept_loaders[1:]
 
-# Print subconcept names and their indices
-print("\nSubconcept names and indices:")
-for sc_name in concept_ds.get_subconcept_names():
-    sc_idx = concept_ds.sc2idx[sc_name]
-    print(f"  [{sc_idx}] {sc_name}")
+    print(f"[Data] #Concept:    {len(concept_loaders[0][1].dataset)}")
+    print(f"[Data] #Subconcept Loaders: {len(concept_loaders) - 1}")
 
-# Print high-level concept names and their subspaces
-print("\nHigh-level concepts and their subconcept indices:")
-for hl_name in concept_ds.get_hl_names():
-    subspace = concept_ds.subspace_mapping.get(hl_name, [])
-    print(f"  {hl_name}: {subspace}")
+    # print concept dataset details
+    print("\n===== CONCEPT DATASET DETAILS =====")
+    print(f"Total number of samples: {len(concept_ds.samples)}")
+    print(f"Total number of subconcepts: {concept_ds.get_num_subconcepts()}")
+    print(f"Total number of high-level concepts: {concept_ds.get_num_high_level()}")
 
-subconcept_loaders = sorted(subconcept_loaders, key=lambda x: x[0])
-print("\nSubconcept-specific loaders:")
-for sc_label, loader in subconcept_loaders:
-    sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
-    print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
+    # subconcept names and indices
+    print("\nSubconcept names and indices:")
+    for sc_name in concept_ds.get_subconcept_names():
+        sc_idx = concept_ds.sc2idx[sc_name]
+        print(f"  [{sc_idx}] {sc_name}")
 
-random.shuffle(subconcept_loaders)
+    # high-level concepts and their subspaces
+    print("\nHigh-level concepts and their subconcept indices:")
+    for hl_name in concept_ds.get_hl_names():
+        subspace = concept_ds.subspace_mapping.get(hl_name, [])
+        print(f"  {hl_name}: {subspace}")
 
-print("\nShuffled Subconcept-specific loaders:")
-for sc_label, loader in subconcept_loaders:
-    sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
-    print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
+    subconcept_loaders = sorted(subconcept_loaders, key=lambda x: x[0])
+    print("\nSubconcept-specific loaders:")
+    for sc_label, loader in subconcept_loaders:
+        sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
+        print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
 
-########################
-# Build QCW Model
-########################
-if not args.disable_subspaces:
-    subspaces = concept_ds.subspace_mapping  # e.g. { "wing": [...], "beak": [...], ... }
-else:
-    # lumps each HL concept into dimension [0], or each concept => single axis
-    subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
+    random.shuffle(subconcept_loaders)
+
+    print("\nShuffled Subconcept-specific loaders:")
+    for sc_label, loader in subconcept_loaders:
+        sc_name = [name for name, idx in concept_ds.sc2idx.items() if idx == sc_label][0]
+        print(f"  Subconcept '{sc_name}' [{sc_label}]: {len(loader.dataset)} samples")
+
+    # Build QCW Model
+    if not args.disable_subspaces: # use subspace mapping
+        subspaces = concept_ds.subspace_mapping  # e.g. { "wing": [...], "beak": [...], ... }
+    else:
+        # one axis per concept
+        subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
+
+subspace_mapping = concept_ds.subspace_mapping
+print(f"Subspace mapping: {subspace_mapping}")
 
 model = build_resnet_qcw(
     num_classes=NUM_CLASSES,
     depth=args.depth,
-    whitened_layers=[int(x) for x in args.whitened_layers.split(",")],
+    whitened_layers=args.whitened_layers,
     act_mode=args.act_mode,
-    subspaces=subspaces,
-    use_subspace=(not args.disable_subspaces),
+    subspaces=subspace_mapping,
+    use_subspace=(not args.disable_subspaces), # this logic is not fleshed out yet
     use_free=args.use_free, # doesn't do anything
     pretrained_model=None,
-    vanilla_pretrain=True
+    vanilla_pretrain=args.vanilla_pretrain
 )
 
-########################
 # Resume Checkpoint
-########################
 def maybe_resume_checkpoint(model, optimizer, args):
     """
-    Attempt to resume from a checkpoint (either a standard ResNet-18
-    or our custom QCW checkpoint). We'll rename layers if needed,
-    skip any missing or extra keys, and optionally load optimizer state.
+    Resume from checkpoint, handling ResNet or QCW format.
+    Renames layers as needed and loads optimizer state if requested.
     Returns: (start_epoch, best_prec)
     """
     start_epoch, best_prec = 0, 0.0
@@ -277,28 +298,24 @@ def maybe_resume_checkpoint(model, optimizer, args):
         return start_epoch, best_prec
 
     print(f"[Checkpoint] Resuming from {args.resume}")
-    ckpt = torch.load(args.resume, map_location="cpu")
+    ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
 
     raw_sd = ckpt.get("state_dict", ckpt)  # either the 'state_dict' sub-dict or the entire ckpt
 
-    # Build a new dictionary that maps the checkpoint keys to our model's keys
-    #    Also if the checkpoint has "module.xxx", remove the "module." prefix.
-    #    We'll skip keys that obviously belong to BN layers if we've replaced them with IterNorm
-    #    or we skip keys that reference "running_rot" or "sum_G" if the model doesn't have them, etc.
-
+    # map checkpoint keys to our model keys, handling module prefix and skipping irrelevant keys
     model_sd = model.state_dict()
     renamed_sd = {}
 
     def rename_key(old_key):
-        # Remove any leading "module." if it exists
+        # remove leading "module." prefix if present
         if old_key.startswith("module."):
             old_key = old_key[len("module."):]
-        # If old_key doesn't start with "backbone." and the model expects "backbone.*" (which it should),
+        # add backbone prefix if needed
         if not old_key.startswith("backbone.") and ("backbone."+old_key in model_sd):
             return "backbone."+old_key
         if old_key.startswith("fc.") and ("backbone.fc"+old_key[2:] in model_sd):
             return "backbone."+old_key
-        # We rely on partial load + strict=False logic to skip mismatched keys.
+        # fallback to partial loading
         return old_key  # fallback if no special rename
     
     matched_keys = []
@@ -306,7 +323,7 @@ def maybe_resume_checkpoint(model, optimizer, args):
     
     for ckpt_k, ckpt_v in raw_sd.items():
         new_k = rename_key(ckpt_k)
-        # if new_k is in the model's dict and shape matches, we keep it
+        # keep if key exists and shape matches
         if new_k in model_sd:
             if ckpt_v.shape == model_sd[new_k].shape:
                 renamed_sd[new_k] = ckpt_v
@@ -337,7 +354,7 @@ def maybe_resume_checkpoint(model, optimizer, args):
                 opt_sd = ckpt["optimizer"]
                 try:
                     optimizer.load_state_dict(opt_sd)
-                    # Ensure param states are on correct device
+                    # move momentum buffers to cuda
                     for param in optimizer.state.values():
                         if isinstance(param, dict) and "momentum_buffer" in param:
                             buf = param["momentum_buffer"]
@@ -354,22 +371,22 @@ optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, we
 start_epoch, best_prec = maybe_resume_checkpoint(model, optimizer, args)
 model = nn.DataParallel(model).cuda()
 
-########################
 # Train + Align
-########################
 def adjust_lr(optimizer, epoch, args):
-    new_lr = args.lr * (LR_DECAY_FACTOR ** (epoch // LR_DECAY_EPOCH))
+    new_lr = args.lr * (args.lr_decay_factor ** (epoch // args.lr_decay_epoch))
     for g in optimizer.param_groups:
         g["lr"] = new_lr
     return new_lr
 
-def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer):
+def train_epoch(train_loader, concept_loaders, model: nn.DataParallel[ResNetQCW], optimizer, epoch, args, writer: SummaryWriter):
     model.train()
     criterion = nn.CrossEntropyLoss().cuda()
+
     losses = AverageMeter()
     top1   = AverageMeter()
     top5   = AverageMeter()
-    alignment_score = AverageMeter()  # For tracking the concept alignment score
+    alignment_score = AverageMeter()
+    concept_loss = 0.0
 
     pbar = tqdm(enumerate(train_loader), total=len(train_loader),
                 desc=f"[Train] Epoch {epoch+1}", smoothing=0.02)
@@ -378,204 +395,374 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         iteration = epoch * len(train_loader) + i
         imgs, lbls = imgs.cuda(), lbls.cuda()
 
-        # Forward pass through the model
+        # classification forward/backward
         outputs = model(imgs)
-
         loss = criterion(outputs, lbls)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
+        # Update classification metrics
         prec1, prec5 = accuracy_topk(outputs, lbls, (1, 5))
         losses.update(loss.item(), imgs.size(0))
         top1.update(prec1, imgs.size(0))
         top5.update(prec5, imgs.size(0))
 
-        # Concept alignment every N batches using subconcept-specific loaders
-        if (i + 1) % CW_ALIGN_FREQ == 0 and len(concept_loaders) > 1:  # Ensure we have subconcept loaders
-            # Skip the first loader (which is the main loader with all concepts)
-            # use subconcept-specific loaders (starting from index 1)
-            alignment_metrics = align_concepts(model, concept_loaders[1:], concept_ds)
+        # concept alignment
+        if (args.cw_align_freq is not None 
+            and (i + 1) % args.cw_align_freq == 0 
+            and len(concept_loaders) > 1):
             
-            global_top1 = alignment_metrics['global_top1']
-            subspace_top1 = alignment_metrics['subspace_top1']
-            global_top5 = alignment_metrics['global_top5']
-            
-            alignment_score.update(subspace_top1)
-            
-            writer.add_scalar("CW/Alignment/GlobalTop1", global_top1, iteration)
+            alignment_metrics = align_concepts(
+                model,
+                concept_loaders[1:],  # sub-concept loaders
+                concept_ds,
+                args.batches_per_concept,
+                args.cw_lambda
+            )
+
+            # get alignment metrics
+            global_top1   = alignment_metrics["global_top1"]
+            subspace_top1 = alignment_metrics["subspace_top1"]
+            global_top5   = alignment_metrics["global_top5"]
+            concept_loss  = alignment_metrics["concept_loss"]
+            axis_consistency = alignment_metrics["axis_consistency"]
+            axis_purity = alignment_metrics["axis_purity"]
+            act_strength_ratio = alignment_metrics["act_strength_ratio"]
+
+            # log to tensorboard
+            writer.add_scalar("CW/Alignment/GlobalTop1",   global_top1,   iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
-            writer.add_scalar("CW/Alignment/GlobalTop5", global_top5, iteration)
+            writer.add_scalar("CW/Alignment/GlobalTop5",   global_top5,   iteration)
+            writer.add_scalar("CW/Alignment/ConceptLoss",  concept_loss,  iteration)
+            writer.add_scalar("CW/FreeConcept/AxisConsistency", axis_consistency, iteration)
+            writer.add_scalar("CW/FreeConcept/AxisPurity", axis_purity,  iteration)
+            writer.add_scalar("CW/FreeConcept/ActStrengthRatio", act_strength_ratio, iteration)
 
-        pbar.set_postfix({"Loss": f"{losses.avg:.3f}", "Top1": f"{top1.avg:.2f}", 
-                          "Top5": f"{top5.avg:.2f}", "ConceptAlignment": f"{alignment_score.avg:.2f}"})
+            alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
 
-        writer.add_scalar("Train/Loss", losses.val, iteration)
-        writer.add_scalar("Train/Top1", top1.val, iteration)
-        writer.add_scalar("Train/Top5", top5.val, iteration)
+        # update progress bar
+        postfix_dict = {
+            "Loss": f"{losses.avg:.3f}",
+            "Top1": f"{top1.avg:.2f}",
+            "Top5": f"{top5.avg:.2f}"
+        }
+        if not args.vanilla_pretrain:
+            postfix_dict["Align"]  = f"{alignment_score.avg:.2f}"
+            postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
+        pbar.set_postfix(postfix_dict)
 
-def align_concepts(model, subconcept_loaders, concept_dataset, batch_per_concept=ALIGNMENT_BATCHES_PER_STEP):
+        writer.add_scalar("Loss", losses.val, iteration)
+        writer.add_scalar("Top1", top1.val, iteration)
+        writer.add_scalar("Top5", top5.val, iteration)
+
+def align_concepts(model: nn.DataParallel[ResNetQCW], subconcept_loaders, concept_dataset: ConceptDataset, batches_per_concept, lambda_):
     """
-    Aligns concepts by accumulating gradients and calculates multiple alignment metrics:
+    Two-phase concept alignment:
+      1. Push labeled sub-concepts to their axes
+      2. Apply winner-takes-all for free sub-concepts
+    Then update rotation matrix and compute metrics.
     
-    1. For each subconcept-specific loader, process multiple batches (batch_per_concept)
-    2. Set model mode to the subconcept's index and process all batches
-    3. Update the rotation matrix after all subconcepts are processed
-    4. Calculate and return alignment metrics using multiple batches per concept
-    
-    Args:
-        model: The QCW model
-        subconcept_loaders: List of subconcept-specific dataloaders
-        concept_dataset: The ConceptDataset_QCW instance to get mappings from
-        batch_per_concept: Number of batches to process per subconcept (default: ALIGNMENT_BATCHES_PER_STEP)
-        
-    Returns:
-        Dict with alignment metrics (global_top1, subspace_top1, global_top5)
+    Returns metrics dict with alignment scores and concept loss.
     """
-    from types import SimpleNamespace
-    
-    subspace_mapping = concept_dataset.subspace_mapping
     model.eval()
-    
-    # Get subconcept to high-level concept mapping from the dataset
-    sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
-    
-    # ACCUMULATE GRADIENTS FOR ALIGNMENT
-    with torch.no_grad():
-        for subconcept_loader in subconcept_loaders:
-            # Get a loader iterator that we can pull multiple batches from
-            sc_label, loader = subconcept_loader
-            loader_iter = iter(loader)
 
-            # Get the high-level concept this subconcept belongs to
-            hl = sc_to_hl.get(sc_label, None)
-            
-            # Set model mode to this subconcept's index for alignment
-            model.module.change_mode(sc_label)
-            
-            # Process additional batches for this subconcept (up to batch_per_concept)
-            for batch_idx in range(batch_per_concept):
-                try:
+    # separate labeled vs free subconcepts
+    sc_to_hl_name = concept_dataset.get_subconcept_to_hl_name_mapping()
+    hl_subconcepts = defaultdict(lambda: {"labeled": [], "free": []})
+
+    label_to_scname = {}
+    for (sc_label, loader) in subconcept_loaders:
+        for name, idx in concept_dataset.sc2idx.items():
+            if idx == sc_label:
+                label_to_scname[sc_label] = name
+                break
+
+    for (sc_label, loader) in subconcept_loaders:
+        hl_name = sc_to_hl_name.get(sc_label, "general")
+        sc_name = label_to_scname[sc_label]
+        if concept_dataset.is_free_subconcept_name(sc_name):
+            hl_subconcepts[hl_name]["free"].append((sc_label, loader))
+        else:
+            hl_subconcepts[hl_name]["labeled"].append((sc_label, loader))
+
+    # reset concept loss
+    for cw_layer in model.module.cw_layers:
+        cw_layer.reset_concept_loss()
+
+    # labeled subconcepts - direct axis push
+    with torch.no_grad():
+        for hl_name, groups in hl_subconcepts.items():
+            for (sc_label, sc_loader) in groups["labeled"]:
+                model.module.change_mode(sc_label)  # set target axis
+                loader_iter = iter(sc_loader)
+                for _ in range(batches_per_concept):
                     batch_data = next(loader_iter, None)
-                    if batch_data is None:
-                        # take away batch_idx==0 if you want to always print if we run out of batches
-                        if batch_idx == 0: print(f"[DEBUG] Empty batch encountered for subconcept {sc_label} (HL: {hl}) for batch {batch_idx+1}: No batch returned from loader. Total available batches: {len(loader)}; Dataset size: {len(loader.dataset)}")
+                    if not batch_data or not len(batch_data[0]):
                         break
-                    if not len(batch_data[0]):
-                        print(f"[DEBUG] Empty image tensor for subconcept {sc_label} (HL: {hl}) for batch {batch_idx+1}: First element of batch_data is empty. Batch data: {batch_data}")
-                        break # empty batch
-                        
-                    imgs, sc_labels, _ = batch_data
-                    imgs = imgs.cuda()
-                    
-                    # Process each image in this additional batch
+                    imgs = batch_data[0].cuda()
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
-                except Exception as e:
-                    print(f"[DEBUG] Exception for subconcept {sc_label} (HL: {hl}) for batch {batch_idx+1}: {e}")
-                    continue
-            
-    # UPDATE ROTATION MATRIX
-    model.module.update_rotation_matrix()
-    
-    # Reset model mode for evaluation
-    model.module.change_mode(-1)
-    
-    # CALCULATE METRICS AFTER ALIGNMENT
-    # Initialize metric counters
-    global_top1_correct = 0
-    subspace_top1_correct = 0
-    global_top5_correct = 0
-    total_samples = 0
 
-    # Setup hook to capture outputs from the last QCW layer
-    hook_storage = SimpleNamespace(outputs=[])
-    
-    def forward_hook(module, input, output):
-        hook_storage.outputs.append(output)
-    
-    last_qcw = get_last_qcw_layer(model.module)
-    handle = last_qcw.register_forward_hook(forward_hook)
-    
-    # Now calculate metrics using multiple batches per concept
+    # free subconcepts - scaled by lambda
+    for cw_layer in model.module.cw_layers:
+        cw_layer.set_subspace_scaling(lambda_)
+
     with torch.no_grad():
-        for subconcept_loader in subconcept_loaders:
-            sc_label, loader = subconcept_loader
-            loader_iter = iter(loader)
-            
-            # Get high-level concept and its subspace
-            hl = sc_to_hl.get(sc_label, None)
-            
-            subspace = subspace_mapping.get(hl, [])
+        for hl_name, groups in hl_subconcepts.items():
+            free_list = groups["free"]
+            if not free_list:
+                continue
 
-            # Process all batches for this subconcept (starting with the first one)
-            for batch_idx in range(batch_per_concept):
-                try:
+            # set active subspace
+            for cw_layer in model.module.cw_layers:
+                cw_layer.clear_subspace()
+                cw_layer.set_subspace(hl_name)
+
+            model.module.change_mode(-1)  # subspace-based alignment
+
+            for (sc_label, sc_loader) in free_list:
+                loader_iter = iter(sc_loader)
+                for _ in range(batches_per_concept):
                     batch_data = next(loader_iter, None)
-                    if batch_data is None or len(batch_data) < 3 or not len(batch_data[0]):
-                        break  # No more batches for this subconcept
-                        
-                    imgs, sc_labels, _ = batch_data
-                except Exception as e:
-                    print(f"Error processing subconcept loader {sc_label}: {str(e)}")
-                    continue
-                
-                # Move images to GPU
-                imgs = imgs.cuda()
-                
-                # Process each image in this batch
-                for img in imgs:
-                    # Forward pass for measurement
-                    out = model(img.unsqueeze(0))
-                    
-                    # Calculate metrics from feature map
-                    if len(hook_storage.outputs) > 0:
-                        featmap = hook_storage.outputs[0]  # shape [1, C, H, W]
-                        feat_avg = featmap.mean(dim=(2,3)).squeeze()  # shape [C]
-                        
-                        # Global Top-1: Is subconcept's axis the most activated?
-                        # Note: This might not be the goal for all subconcepts, only for dominant ones
-                        global_pred = feat_avg.argmax().item()
-                        if global_pred == sc_label:
-                            global_top1_correct += 1
-                        
-                        # Global Top-5: Is subconcept's axis among top 5 activated?
-                        _, top5_indices = feat_avg.topk(5)
-                        if sc_label in top5_indices:
-                            global_top5_correct += 1
-                        
-                        # Subspace Top-1: Is the subconcept's axis most activated within its high-level subspace?
-                        if len(subspace) > 0:
-                            subspace_activations = feat_avg[subspace]
-                            subspace_pred_local = subspace_activations.argmax().item()
-                            predicted_global_axis = subspace[subspace_pred_local]
-                            if predicted_global_axis == sc_label:
-                                subspace_top1_correct += 1
-                        
-                        total_samples += 1
-                        hook_storage.outputs.clear()
-    
-    # Cleanup and return to training mode
-    handle.remove()
-    model.train()
-    
-    # Calculate percentage metrics
-    if total_samples > 0:
-        global_top1_pct = 100.0 * global_top1_correct / total_samples
-        subspace_top1_pct = 100.0 * subspace_top1_correct / total_samples
-        global_top5_pct = 100.0 * global_top5_correct / total_samples
-    else:
-        global_top1_pct = 0.0
-        subspace_top1_pct = 0.0
-        global_top5_pct = 0.0
-    
+                    if not batch_data or not len(batch_data[0]):
+                        break
+                    imgs = batch_data[0].cuda()
+                    for img in imgs:
+                        _ = model(img.unsqueeze(0))
+
+    # update rotation matrix
+    model.module.update_rotation_matrix()
+    model.module.change_mode(-1)
+    for cw_layer in model.module.cw_layers:
+        cw_layer.clear_subspace()
+        cw_layer.set_subspace_scaling(1.0)
+    model.module.update_rotation_matrix()
+    model.module.change_mode(-1)
+    for cw_layer in model.module.cw_layers:
+        cw_layer.clear_subspace()
+        cw_layer.set_subspace_scaling(1.0)
+
+    # get concept loss
+    total_cw_loss = 0.0
+    for cw_layer in model.module.cw_layers:
+        total_cw_loss += cw_layer.get_concept_loss()
+    avg_cw_loss = total_cw_loss / max(1, len(model.module.cw_layers))
+
+    # compute all metrics
+    metrics = compute_alignment_metrics(
+        model, subconcept_loaders, concept_dataset,
+        batches_per_concept, label_to_scname
+    )
     return {
-        'global_top1': global_top1_pct,
-        'subspace_top1': subspace_top1_pct,
-        'global_top5': global_top5_pct
+        "global_top1":  metrics["global_top1"],
+        "subspace_top1": metrics["subspace_top1"],
+        "global_top5":  metrics["global_top5"],
+        "concept_loss": avg_cw_loss,
+        "axis_consistency": metrics["axis_consistency"],
+        "axis_purity": metrics["axis_purity"],
+        "act_strength_ratio": metrics["act_strength_ratio"]
     }
 
-def validate(loader, model, epoch, writer, mode="Val"):
+
+
+def compute_alignment_metrics(model: nn.DataParallel[ResNetQCW], subconcept_loaders, concept_dataset: ConceptDataset, batches_per_concept, label_to_scname):
+    """
+    Calculate alignment metrics for both labeled and free subconcepts.
+    
+    For labeled subconcepts: global_top1, global_top5, subspace_top1
+    For free subconcepts: axis_consistency, axis_purity, act_strength_ratio
+    
+    Returns dict with all metrics.
+    """
+    labeled_top1_correct = 0
+    labeled_top5_correct = 0
+    labeled_subspace_correct = 0
+    labeled_total = 0
+
+
+    axis_usage_by_sc = defaultdict(lambda: defaultdict(int))
+
+    # free concepts
+    free_img_count = defaultdict(int)
+    free_chosen_act_sum = defaultdict(float)
+
+    # labeled concepts
+    labeled_axis_act_sum = defaultdict(float)
+    labeled_axis_count = defaultdict(int)
+
+    sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
+    subspace_map = concept_dataset.subspace_mapping
+
+    # get last CW layer
+    if not model.module.cw_layers:
+        # no CW layer, return zeros
+        return {
+            "global_top1": 0.0,
+            "subspace_top1": 0.0,
+            "global_top5": 0.0,
+            "axis_consistency": 0.0,
+            "axis_purity": 0.0,
+            "act_strength_ratio": 0.0
+        }
+
+    last_cw = model.module.cw_layers[-1]
+
+    hook_storage = []
+    def forward_hook(module, inp, out):
+        hook_storage.append(out)
+
+    handle = last_cw.register_forward_hook(forward_hook)
+    model.eval()
+
+    with torch.no_grad():
+        # collect activations for each subconcept
+        for (sc_label, loader) in subconcept_loaders:
+            sc_name = label_to_scname[sc_label]
+            is_free = concept_dataset.is_free_subconcept_name(sc_name)
+            hl_name = sc_to_hl.get(sc_label, "general")
+            subspace_axes = subspace_map.get(hl_name, [])
+
+            loader_iter = iter(loader)
+            for _ in range(batches_per_concept):
+                batch_data = next(loader_iter, None)
+                if not batch_data or not len(batch_data[0]):
+                    break
+
+                imgs = batch_data[0].cuda()
+                for img in imgs:
+                    _ = model(img.unsqueeze(0))
+                    if not hook_storage:
+                        continue
+
+                    featmap = hook_storage[0]  # shape [1, C, H, W]
+                    hook_storage.clear()
+
+                    # spatial average
+                    feat_avg = featmap.mean(dim=(2,3)).squeeze(0)  # shape [C]
+                    top1_axis = feat_avg.argmax().item()
+                    top5_axes = feat_avg.topk(5)[1].tolist()
+
+                    # track top-1 axis usage
+                    axis_usage_by_sc[sc_label][top1_axis] += 1
+
+                    if is_free:
+                        # free concept stats
+                        free_img_count[sc_label] += 1
+                        free_chosen_act_sum[sc_label] += float(feat_avg[top1_axis].item())
+                    else:
+                        # labeled concept stats
+                        if top1_axis == sc_label:
+                            labeled_top1_correct += 1
+                        if sc_label in top5_axes:
+                            labeled_top5_correct += 1
+                        if subspace_axes:
+                            local_sub_acts = feat_avg[subspace_axes]
+                            local_winner_idx = local_sub_acts.argmax().item()
+                            global_winner_axis = subspace_axes[local_winner_idx]
+                            if global_winner_axis == sc_label:
+                                labeled_subspace_correct += 1
+                        labeled_total += 1
+
+                        # track activation on target axis
+                        if sc_label < len(feat_avg):
+                            labeled_axis_act_sum[sc_label] += float(feat_avg[sc_label].item())
+                            labeled_axis_count[sc_label] += 1
+
+    handle.remove()
+    model.train()
+
+    # labeled concept metrics
+    if labeled_total > 0:
+        labeled_top1_pct = 100.0 * labeled_top1_correct / labeled_total
+        labeled_top5_pct = 100.0 * labeled_top5_correct / labeled_total
+        labeled_subspace_pct = 100.0 * labeled_subspace_correct / labeled_total
+    else:
+        labeled_top1_pct = labeled_top5_pct = labeled_subspace_pct = 0.0
+
+    # free concept metrics
+    sum_consistency = 0.0
+    sum_purity = 0.0
+    sum_act_ratio = 0.0
+    free_count = 0
+
+    for sc_label, axis_counts in axis_usage_by_sc.items():
+        sc_name = label_to_scname[sc_label]
+        if not concept_dataset.is_free_subconcept_name(sc_name):
+            continue
+
+        total_images = free_img_count[sc_label]
+        if total_images <= 0:
+            continue  # skip empty concepts
+
+        free_count += 1
+
+        # axis consistency
+        best_axis, best_count = max(axis_counts.items(), key=lambda x: x[1])
+        axis_consistency = 100.0 * best_count / float(total_images)
+
+        # axis purity
+        hl_name = sc_to_hl[sc_label]
+        used_by_others = 0
+        for (other_label, _) in subconcept_loaders:
+            if other_label == sc_label:
+                continue
+            other_hl = sc_to_hl.get(other_label, "general")
+            if other_hl == hl_name:
+                used_by_others += axis_usage_by_sc[other_label].get(best_axis, 0)
+
+        purity_den = best_count + used_by_others
+        axis_purity = 100.0 * best_count / purity_den if purity_den > 0 else 100.0
+
+        # activation strength ratio
+        free_avg_act = free_chosen_act_sum[sc_label] / float(total_images)
+
+        # get labeled activations in same high-level concept
+        sum_labeled_act = 0.0
+        count_labeled_act = 0
+        for (lab_label, _) in subconcept_loaders:
+            if lab_label == sc_label:
+                continue
+            if sc_to_hl.get(lab_label, "general") == hl_name:
+                if labeled_axis_count[lab_label] > 0:
+                    lab_mean = labeled_axis_act_sum[lab_label] / labeled_axis_count[lab_label]
+                    sum_labeled_act += lab_mean
+                    count_labeled_act += 1
+
+        if count_labeled_act > 0:
+            labeled_mean = sum_labeled_act / float(count_labeled_act)
+            if labeled_mean < 1e-9:
+                act_strength_ratio = 100.0
+            else:
+                act_strength_ratio = 100.0 * (free_avg_act / labeled_mean)
+        else:
+            act_strength_ratio = -1.0
+
+        # accumulate metrics
+        sum_consistency += axis_consistency
+        sum_purity += axis_purity
+        sum_act_ratio += act_strength_ratio
+
+    if free_count > 0:
+        axis_consistency_avg = sum_consistency / free_count
+        axis_purity_avg = sum_purity / free_count
+        act_strength_ratio_avg = sum_act_ratio / free_count
+    else:
+        axis_consistency_avg = 0.0
+        axis_purity_avg = 0.0
+        act_strength_ratio_avg = 0.0
+    # return all metrics
+    return {
+        "global_top1": labeled_top1_pct,
+        "subspace_top1": labeled_subspace_pct,
+        "global_top5": labeled_top5_pct,
+        "axis_consistency": axis_consistency_avg,
+        "axis_purity": axis_purity_avg,
+        "act_strength_ratio": act_strength_ratio_avg
+    }
+
+
+def validate(loader, model: nn.DataParallel[ResNetQCW], epoch, writer: SummaryWriter, mode="Val"):
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
     losses = AverageMeter()
@@ -598,10 +785,8 @@ def validate(loader, model, epoch, writer, mode="Val"):
     print(f"[{mode}] Epoch {epoch+1}: Loss={losses.avg:.3f}, Top1={top1.avg:.2f}, Top5={top5.avg:.2f}")
     return top1.avg
 
-########################
 # Save + Resume
-########################
-def save_checkpoint(state, is_best, prefix, outdir="./checkpoints"):
+def save_checkpoint(state, is_best, prefix, outdir=args.checkpoint_dir):
     os.makedirs(outdir, exist_ok=True)
     ckpt_path = os.path.join(outdir, f"{prefix}_checkpoint.pth")
     torch.save(state, ckpt_path)
@@ -610,9 +795,7 @@ def save_checkpoint(state, is_best, prefix, outdir="./checkpoints"):
         shutil.copyfile(ckpt_path, best_path)
         print(f"[Checkpoint] Best => {best_path}")
 
-########################
 # Utility Classes
-########################
 class AverageMeter:
     def __init__(self):
         self.reset()
@@ -638,9 +821,7 @@ def accuracy_topk(output, target, topk=(1,)):
         res.append((c_k*100.0/batch_size).item())
     return tuple(res)
 
-########################
-# Main
-########################
+# Main Loop
 def main():
     global args
     best_acc = best_prec
