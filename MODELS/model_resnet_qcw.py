@@ -18,8 +18,6 @@ logging.basicConfig(
     ]
 )
 
-NUM_CLASSES = 200
-
 class BottleneckCW(nn.Module):
     expansion = 4
     
@@ -86,9 +84,9 @@ class BottleneckCW(nn.Module):
 # 2) The ResNetQCW class that uses the custom BottleneckCW if whitening is needed
 ################################################################################
 class ResNetQCW(nn.Module):
-    def __init__(self, num_classes=NUM_CLASSES, depth=18, whitened_layers=None,
+    def __init__(self, num_classes=200, depth=18, whitened_layers=None,
                  act_mode="pool_max", subspaces=None, use_subspace=True,
-                 use_free=False, pretrained_model=None, vanilla_pretrain=True):
+                 use_free=False, pretrained_model=None, vanilla_pretrain=False):
         """
         Build a ResNet with a CW layer placed AFTER the residual, matching old code.
 
@@ -116,8 +114,11 @@ class ResNetQCW(nn.Module):
             bn_dims = [64, 128, 256, 512]
         else:
             raise ValueError(f"Unsupported depth: {depth}")
-
-        self.cw_layers = []
+        
+        in_features = self.backbone.fc.in_features
+        self.backbone.fc = nn.Linear(in_features, num_classes)
+        
+        self.cw_layers: list[IterNormRotation] = []
 
         layer_names = ["layer1", "layer2", "layer3", "layer4"]
 
@@ -149,9 +150,7 @@ class ResNetQCW(nn.Module):
                         
                     # Create the CW module
                     dim = bn_dims[ln_i]
-                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1)
-                    if self.use_subspace and self.subspaces is not None:
-                        qcw.subspaces = self.subspaces
+                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1, subspace_map=self.subspaces)
 
                     # Assign it to new_block.cw
                     new_block.cw = qcw
@@ -164,7 +163,7 @@ class ResNetQCW(nn.Module):
 
         # Load any pretrained weights if given
         if pretrained_model and os.path.isfile(pretrained_model):
-            self.load_model(pretrained_model, vanilla_pretrain)
+            self.load_model(pretrained_model)
 
     def _wrap_basicblock(self, original_block):
         """
@@ -219,7 +218,7 @@ class ResNetQCW(nn.Module):
         for cw in self.cw_layers:
             cw.update_rotation_matrix()
 
-    def load_model(self, pretrain_path, vanilla_pretrain):
+    def load_model(self, pretrain_path):
         print(f"[ResNetQCW] Loading pretrained weights from {pretrain_path} ...")
         model_dict = self.state_dict()
         pretrain_dict = torch.load(pretrain_path, map_location="cpu")
@@ -252,8 +251,8 @@ class ResNetQCW(nn.Module):
         return out
 
 
-def build_resnet_qcw(num_classes=NUM_CLASSES, depth=18, whitened_layers=None, act_mode="pool_max",
-                     subspaces=None, use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=True):
+def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max", subspaces=None, 
+                     use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=False):
     """
     Main entry point to construct a ResNet with QCW blocks that attach CW AFTER the residual is added.
     """
@@ -286,3 +285,22 @@ def get_last_qcw_layer(model):
         if isinstance(module, IterNormRotation):
             return module
     raise ValueError("No IterNormRotation (QCW) layer found in the model")
+
+def get_qcw_layer(model, layer_idx):
+    """
+    Finds the last IterNormRotation in model.cw_layers or by reversing modules,
+    same as before.
+    """
+    if hasattr(model, "cw_layers") and len(model.cw_layers) > 0:
+        return model.cw_layers[layer_idx]
+
+
+    # fallback: search modules
+    pot_modules = []
+    for module in list(model.modules()):
+        if isinstance(module, IterNormRotation):
+            pot_modules.append(module)
+    if len(pot_modules) > 0:
+        return pot_modules[layer_idx]
+
+    raise ValueError("Couldnt find the requested IterNormRotation (QCW) layer in the model")
