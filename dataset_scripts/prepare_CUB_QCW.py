@@ -3,7 +3,7 @@ import argparse
 import pandas as pd
 import json
 import shutil
-import random
+
 from collections import defaultdict
 from PIL import Image, ImageDraw
 from tqdm import tqdm
@@ -18,7 +18,7 @@ def parse_args():
                         help="Output directory for concept dataset")
     parser.add_argument("--mode", choices=["concepts","attributes"], default="concepts",
                         help="Mode for high-level concept assignment.")
-    parser.add_argument("--mappings", default="",
+    parser.add_argument("--mappings", required=True,
                         help="Path to mappings.json. In 'concepts' mode, it is subConcept->HL. In 'attributes' mode, it maps 'has_wing_color'->'wing'.")
     parser.add_argument("--concepts", required=True,
                         help="Comma-separated list of high-level concepts we include (e.g. 'wing,beak,throat,general')")
@@ -26,7 +26,7 @@ def parse_args():
                         help="How to process images for concept dataset: 'draw'=draw bbox, 'crop'=crop around it, 'copy'=no modification.")
     parser.add_argument("--crop_size", type=int, default=224,
                         help="If draw_or_copy='crop', the region is resized to this size after bounding box crop.")
-    parser.add_argument("--val_fraction", type=float, default=0.5,
+    parser.add_argument("--val_fraction", type=float, default=0.2,
                         help="Fraction of test images used for concept_val or main dataset val.")
     parser.add_argument("--part_margin", type=int, default=40,
                         help="Margin around single part-loc if only one visible part is found.")
