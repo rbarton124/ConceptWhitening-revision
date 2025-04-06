@@ -287,7 +287,7 @@ model = build_resnet_qcw(
 )
 
 # Resume Checkpoint
-def maybe_resume_checkpoint(model, optimizer, args):
+def maybe_resume_checkpoint(model: nn.DataParallel[ResNetQCW], optimizer: torch.optim.Optimizer, args):
     """
     Resume from checkpoint, handling ResNet or QCW format.
     Renames layers as needed and loads optimizer state if requested.
@@ -372,13 +372,14 @@ start_epoch, best_prec = maybe_resume_checkpoint(model, optimizer, args)
 model = nn.DataParallel(model).cuda()
 
 # Train + Align
-def adjust_lr(optimizer, epoch, args):
+def adjust_lr(optimizer: torch.optim.Optimizer, epoch, args):
     new_lr = args.lr * (args.lr_decay_factor ** (epoch // args.lr_decay_epoch))
     for g in optimizer.param_groups:
         g["lr"] = new_lr
     return new_lr
 
-def train_epoch(train_loader, concept_loaders, model: nn.DataParallel[ResNetQCW], optimizer, epoch, args, writer: SummaryWriter):
+def train_epoch(train_loader, concept_loaders, model: nn.DataParallel[ResNetQCW],
+                optimizer: torch.optim.Optimizer, epoch, args, writer: SummaryWriter):
     model.train()
     criterion = nn.CrossEntropyLoss().cuda()
 
