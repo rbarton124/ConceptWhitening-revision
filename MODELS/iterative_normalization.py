@@ -302,6 +302,14 @@ class IterNormRotation(nn.Module):
                 R=torch.bmm(Q,R)
             self.running_rot=R
             self.counter=torch.ones(size_R[-1],device=G.device)*0.001
+    
+    # per-layer activation tensor mask to activate / deactivate certain concepts
+    def set_activation_mask(self, mask):
+        assert mask.shape[0] == self.num_features
+        self.activation_mask = mask.detach()
+
+    def clear_activation_mask(self):
+        self.activation_mask = torch.ones_like(self.activation_mask) # reset to all activated
 
     def forward(self, X:torch.Tensor):
         # 1) IterNorm
@@ -333,9 +341,13 @@ class IterNormRotation(nn.Module):
         X_hat=torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
         X_hat=X_hat.view(*size_X)
         if self.affine:
-            return X_hat*self.weight+self.bias
+            x = X_hat*self.weight+self.bias
         else:
-            return X_hat
+            x = X_hat
+        
+        # 4) Apply optional concept mask
+        if self.activation_mask is not None:
+            return x * self.activation_mask.view(1, -1, 1, 1) # [B,C,H,W] shape
 
     def _reduce_activation(self, X_hat):
         # shape: [B, G, C, H, W]

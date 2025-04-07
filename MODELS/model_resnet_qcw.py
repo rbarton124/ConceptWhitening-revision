@@ -209,6 +209,19 @@ class ResNetQCW(nn.Module):
                 return out
 
         return BasicBlockCW(original_block)
+    
+    def _apply_per_layer_activation_masks(model, layer_masks):
+        """
+        model: ResNetQCW
+        layer_masks: list of torch tensors, one per CW layer
+        """
+        assert len(layer_masks) == len(model.module.cw_layers)
+        for cw, mask in zip(model.module.cw_layers, layer_masks):
+            cw.set_activation_mask(mask)
+        
+    def clear_all_activation_masks(model):
+        for cw in model.module.cw_layers:
+            cw.clear_activation_mask()
 
     def change_mode(self, mode):
         for cw in self.cw_layers:
