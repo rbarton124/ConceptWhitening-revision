@@ -10,12 +10,9 @@ from tqdm import tqdm
 import shutil
 from types import SimpleNamespace
 import matplotlib.pyplot as plt
-
 from sklearn.metrics import roc_auc_score
-
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
-
 
 # Model loading stuff
 def resume_checkpoint(model, checkpoint_path):
