@@ -10,12 +10,9 @@ from tqdm import tqdm
 import shutil
 from types import SimpleNamespace
 import matplotlib.pyplot as plt
-
 from sklearn.metrics import roc_auc_score
-
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
-
 
 # Model loading stuff
 def resume_checkpoint(model, checkpoint_path):
@@ -196,9 +193,9 @@ def compute_concept_purity_info(
     return info_dict
 
 
-def plot_concept_purity_superimposed(
+def plot_concept_purity(
     concept_info: dict,
-    out_path: str = "concept_purity_superimposed.png"
+    out_path: str = "concept_purity.png"
 ):
     """Plot bar chart showing concept purity - red=labeled axes, blue=unlabeled"""
     import math
@@ -246,7 +243,7 @@ def plot_concept_purity_superimposed(
 
     plt.xticks(range(len(data_list)), [x[0] for x in data_list], rotation=45, ha="right")
     plt.ylabel("AUC (Concept Purity)")
-    plt.title("Concept Purity (Superimposed for Free Concepts)")
+    plt.title("Concept Purity")
     plt.ylim(0, 1)
     plt.tight_layout()
 
@@ -258,7 +255,7 @@ def plot_concept_purity_superimposed(
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=120)
     plt.close()
-    print(f"[Info] Saved superimposed concept purity chart => {out_path}")
+    print(f"[Info] Saved concept purity chart => {out_path}")
 
 # Top images per concept
 def plot_topk_images_for_concept_axes(
@@ -305,7 +302,7 @@ def plot_topk_images_for_concept_axes(
     all_imgs = [] if save_transformed else None
     all_paths = [] if not save_transformed else None
 
-    for imgs, sc_label, paths in loader:
+    for imgs, sc_label, paths in tqdm(loader, desc="[TopK] Gathering feats"):
         imgs = imgs.to(device)
         hook_storage.output = None
         _ = model(imgs)
@@ -453,8 +450,8 @@ def main():
         # run purity analysis
         if args.run_purity:
             info_dict = compute_concept_purity_info(model, concept_ds, batch_size=args.batch_size)
-            out_path = os.path.join(args.output_dir, "concept_purity_superimposed.png")
-            plot_concept_purity_superimposed(info_dict, out_path)
+            out_path = os.path.join(args.output_dir, "concept_purity.png")
+            plot_concept_purity(info_dict, out_path)
 
         # extract top activating images
         if args.topk_images:
