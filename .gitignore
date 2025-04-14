@@ -76,6 +76,7 @@ logs/
 runs_proper/
 dataset_scripts/logs/
 checkpoints/
+checkpoints-new/
 old-runs/
 old-runs2/
 kaggle.json
