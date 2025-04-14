@@ -196,6 +196,8 @@ class IterNormRotation(nn.Module):
         self.subspace_map=subspace_map if subspace_map else {}
         self.use_free=use_free
         self.active_subspace=None
+        # initialize activation mask to None
+        self.activation_mask=None
 
         assert num_groups==1, "Please keep num_groups=1"
         if num_channels is None:
@@ -347,7 +349,9 @@ class IterNormRotation(nn.Module):
         
         # 4) Apply optional concept mask
         if self.activation_mask is not None:
-            return x * self.activation_mask.view(1, -1, 1, 1) # [B,C,H,W] shape
+            x = x * self.activation_mask.view(1, -1, 1, 1) # [B,C,H,W] shape
+        
+        return x
 
     def _reduce_activation(self, X_hat):
         # shape: [B, G, C, H, W]

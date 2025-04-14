@@ -762,12 +762,18 @@ def compute_alignment_metrics(model, subconcept_loaders, concept_dataset, batche
     }
 
 
-def validate(loader, model, epoch, writer, mode="Val"):
+def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts_to_mask=None):
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
     losses = AverageMeter()
     top1   = AverageMeter()
     top5   = AverageMeter()
+
+    # validate concept masking
+    if concept_ds and concepts_to_mask:
+        from masking_utils import mask_concepts, apply_per_layer_activation_masks, clear_all_activation_masks
+        masks = mask_concepts(model, concept_ds, concepts_to_mask)
+        apply_per_layer_activation_masks(model, masks)
 
     with torch.no_grad():
         for imgs, lbls in loader:
@@ -778,6 +784,10 @@ def validate(loader, model, epoch, writer, mode="Val"):
             losses.update(loss.item(), imgs.size(0))
             top1.update(prec1, imgs.size(0))
             top5.update(prec5, imgs.size(0))
+    
+    # reset masking
+    if concept_ds and concepts_to_mask:
+        clear_all_activation_masks(model)
 
     writer.add_scalar(f"{mode}/Loss", losses.avg, epoch)
     writer.add_scalar(f"{mode}/Top1", top1.avg, epoch)
