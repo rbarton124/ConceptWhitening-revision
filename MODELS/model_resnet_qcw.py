@@ -104,12 +104,12 @@ class ResNetQCW(nn.Module):
         
         # Build the standard backbone from torchvision
         if depth == 18:
-            self.backbone = models.resnet18(pretrained=False)
+            self.backbone = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
             # For BasicBlock-based layers
             block_type = 'basic'
             bn_dims = [64, 128, 256, 512]
         elif depth == 50:
-            self.backbone = models.resnet50(pretrained=False)
+            self.backbone = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
             block_type = 'bottleneck'
             bn_dims = [64, 128, 256, 512]
         else:
