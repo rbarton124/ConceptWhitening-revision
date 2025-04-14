@@ -7,6 +7,12 @@ from pycocotools.coco import COCO
 from tqdm import tqdm
 
 
+TOTAL_SAMPLES = 30000
+TRAIN_SAMPLES = int(0.7 * TOTAL_SAMPLES)
+VAL_SAMPLES = int(0.1 * TOTAL_SAMPLES)
+TEST_SAMPLES = int(0.2 * TOTAL_SAMPLES)
+
+
 def log(msg, level, verbose):
     if verbose >= level:
         print(msg)
@@ -87,7 +93,11 @@ def organize_coco(json_path, image_dir, target_root, dataset_name, verbose=1):
         img_id_to_cats.setdefault(img_id, set()).add(cat_id)
 
     all_img_ids = list(img_id_to_cats.keys())
-    train_ids, val_ids, test_ids = split_dataset(all_img_ids)
+
+    sampled_img_ids = random.sample(all_img_ids, TOTAL_SAMPLES)
+    train_ids = sampled_img_ids[:TRAIN_SAMPLES]
+    val_ids = sampled_img_ids[TRAIN_SAMPLES:TRAIN_SAMPLES + VAL_SAMPLES]
+    test_ids = sampled_img_ids[TRAIN_SAMPLES + VAL_SAMPLES:TOTAL_SAMPLES]
 
     dataset_root = os.path.join(target_root, dataset_name)
     main_root = os.path.join(dataset_root, "main_dataset")
