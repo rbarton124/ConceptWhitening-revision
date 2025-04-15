@@ -1,7 +1,6 @@
 import os
 import json
 from PIL import Image, ImageDraw
-import torch
 import numpy as np
 from torch.utils.data import Dataset
 from PIL import ImageFilter
@@ -117,8 +116,8 @@ class ConceptDataset(Dataset):
 
                         # bounding box from bboxes_dict if present
                         bbox = self.bboxes_dict.get(rel_path, None)
-                        if bbox is None:
-                            bbox = [0,0,0,0]
+                        if bbox is None or bbox[2] == 0 or bbox[3] == 0:
+                            continue
 
                         # store sample
                         self.samples.append((full_path, bbox, hl_lower, sc_folder))
@@ -186,6 +185,8 @@ class ConceptDataset(Dataset):
         # else: do nothing for "none"
 
         if self.transform:
+            if img.width == 0 or img.height == 0:
+                raise ValueError(f"Image {img_path} has zero width or height: {img.size}")
             img = self.transform(img)
 
         # Return (image, subconcept_label, image_path)

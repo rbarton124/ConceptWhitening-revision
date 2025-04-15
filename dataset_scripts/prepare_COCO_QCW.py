@@ -28,9 +28,15 @@ def split_dataset(image_ids, seed=42):
 
 
 def organize_by_category(
-    coco, image_ids, image_dir, output_dir, cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose=1, group_by_supercat=False
+    coco, bboxes, image_ids, image_dir, output_dir, concept_dir, cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose=1, group_by_supercat=False
 ):
+    if os.path.exists(output_dir):
+        log(f"Clearing output directory: {output_dir}", 1, verbose)
+        shutil.rmtree(output_dir)
+
+    log(f"Creating output directory: {output_dir}", 1, verbose)
     os.makedirs(output_dir, exist_ok=True)
+    log(f"Output directory created.", 1, verbose)
 
     iterable = tqdm(image_ids) if verbose >= 1 else image_ids
     for img_id in iterable:
@@ -61,23 +67,25 @@ def organize_by_category(
                 shutil.copy(src_path, dst_path)
                 log(f"Copied: {src_path} -> {dst_path}", 2, verbose)
 
-def extract_bboxes(coco, image_ids, output_path, verbose=1):
-    bboxes = {}
-    iterable = tqdm(image_ids, desc=f"Extracting bboxes") if verbose >= 1 else image_ids
-    for img_id in iterable:
-        img_info = coco.loadImgs(img_id)[0]
-        filename = img_info['file_name']
-        anns = coco.loadAnns(coco.getAnnIds(imgIds=[img_id]))
-        bboxes[filename] = [ann['bbox'] for ann in anns]
+        if group_by_supercat:
+            anns = coco.loadAnns(coco.getAnnIds(imgIds=[img_id]))
+            for ann in anns:
+                cat_id = ann['category_id']
+                category = cat_id_to_name[cat_id]
+                supercategory = cat_id_to_supercat[cat_id]
 
-    with open(output_path, 'w') as f:
-        json.dump(bboxes, f, indent=2)
-    log(f"Saved bboxes to {output_path}", 1, verbose)
+                dst_dir = os.path.join(output_dir, supercategory, category)
+                dst_path = os.path.join(dst_dir, filename)
+                rel_path = os.path.relpath(dst_path, concept_dir)
+                x, y, width, height = ann['bbox']
+                bboxes[rel_path] = [x, y, x + width, y + height]
 
 
 def organize_coco(json_path, image_dir, target_root, dataset_name, verbose=1):
     log(f"Loading COCO annotations from {json_path}...", 1, verbose)
     coco = COCO(json_path)
+
+    bboxes = {}
 
     cat_id_to_name = {}
     cat_id_to_supercat = {}
@@ -104,25 +112,28 @@ def organize_coco(json_path, image_dir, target_root, dataset_name, verbose=1):
     concept_root = os.path.join(dataset_root, "concept_dataset")
 
     log("\nCreating train split in 'main_dataset'...", 1, verbose)
-    organize_by_category(coco, train_ids, image_dir, os.path.join(main_root, "train"),
+    organize_by_category(coco, bboxes, train_ids, image_dir, os.path.join(main_root, "train"), concept_root,
                          cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose, group_by_supercat=False)
     log("\nCreating validation split in 'main_dataset'...", 1, verbose)
-    organize_by_category(coco, val_ids, image_dir, os.path.join(main_root, "val"),
+    organize_by_category(coco, bboxes, val_ids, image_dir, os.path.join(main_root, "val"), concept_root,
                          cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose, group_by_supercat=False)
     log("\nCreating test split in 'main_dataset'...", 1, verbose)
-    organize_by_category(coco, test_ids, image_dir, os.path.join(main_root, "test"),
+    organize_by_category(coco, bboxes, test_ids, image_dir, os.path.join(main_root, "test"), concept_root,
                          cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose, group_by_supercat=False)
 
     log("\nCreating train concept datasets...", 1, verbose)
-    organize_by_category(coco, train_ids, image_dir, os.path.join(concept_root, "concept_train"),
+    organize_by_category(coco, bboxes, train_ids, image_dir, os.path.join(concept_root, "concept_train"), concept_root,
                          cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose, group_by_supercat=True)
     log("\nCreating validation concept datasets...", 1, verbose)
-    organize_by_category(coco, val_ids, image_dir, os.path.join(concept_root, "concept_val"),
+    organize_by_category(coco, bboxes, val_ids, image_dir, os.path.join(concept_root, "concept_val"), concept_root,
                          cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose, group_by_supercat=True)
     
     log("\nExtracting bounding boxes for the full main dataset...", 1, verbose)
-    all_main_ids = train_ids + val_ids + test_ids
-    extract_bboxes(coco, all_main_ids, os.path.join(concept_root, "bboxes.json"), verbose)
+
+    output_path = os.path.join(concept_root, "bboxes.json")
+    with open(output_path, 'w') as f:
+        json.dump(bboxes, f, indent=2)
+    log(f"Saved bboxes to {output_path}", 1, verbose)
 
     log("\nDone organizing COCO dataset.", 1, verbose)
 
