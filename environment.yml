@@ -2,6 +2,7 @@ name: QCW
 channels:
     - pytorch
     - nvidia
+    - conda-forge
     - defaults
 dependencies:
     - python=3.11
@@ -17,5 +18,8 @@ dependencies:
     - seaborn
     - opencv
     - tensorboard
+    - prompt_toolkit
+    - rich
+    - ruamel.yaml
     - pip:
         - tqdm
