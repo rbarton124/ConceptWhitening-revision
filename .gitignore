@@ -79,5 +79,7 @@ checkpoints/
 checkpoints-new/
 old-runs/
 old-runs2/
+runs_proper/
 kaggle.json
 requirements.txt
+figures/

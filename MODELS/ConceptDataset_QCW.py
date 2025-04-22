@@ -1,6 +1,7 @@
 import os
 import json
 from PIL import Image, ImageDraw
+import torch
 import numpy as np
 from torch.utils.data import Dataset
 from PIL import ImageFilter
@@ -116,8 +117,9 @@ class ConceptDataset(Dataset):
 
                         # bounding box from bboxes_dict if present
                         bbox = self.bboxes_dict.get(rel_path, None)
-                        if bbox is None or bbox[2] == 0 or bbox[3] == 0:
-                            continue
+                        if bbox is None:
+                            print(f"[ConceptDataset]    Bounding box for {rel_path} not found in bboxes.json.")
+                            bbox = [0,0,0,0]
 
                         # store sample
                         self.samples.append((full_path, bbox, hl_lower, sc_folder))
