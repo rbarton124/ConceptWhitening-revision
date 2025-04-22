@@ -51,7 +51,7 @@ def mask_concepts(model, concept_ds, names_to_mask, mask_value=0.0, default_valu
 
     layer_masks = []
     for cw_layer in model.module.cw_layers:
-        mask = torch.full((cw_layer.num_features,), default_value, device=cw_layer.activation_mask.device)
+        mask = torch.full((cw_layer.num_features,), default_value, device=next(cw_layer.parameters()).device)
         for idx in masked_indices:
             if 0 <= idx < mask.shape[0]:
                 mask[idx] = mask_value
