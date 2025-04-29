@@ -68,9 +68,9 @@ parser.add_argument("--workers", type=int, default=4, help="Number of data loadi
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
 parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
 # Feature toggles
-parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.") # used to work, isnt working lately
-parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
-parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
+parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.") # used to work, isnt working lately TODO: ACTUALLY FIX [issue was subspace null mapping issue]
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet TODO: FIX
+parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet TODO: FIX
 
 args = parser.parse_args()
 
@@ -85,7 +85,7 @@ if args.vanilla_pretrain:
     args.cw_align_freq = None
 else:
     try:
-        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]  # Convert to list of integers
+        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]
     except ValueError:
         print("Invalid whitened_layers format. Should be a comma-separated list of integers.")
         if args.whitened_layers == '':

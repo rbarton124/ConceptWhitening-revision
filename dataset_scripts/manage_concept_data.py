@@ -1,3 +1,4 @@
+# This script was entirely written by ChatGPT, IDK how it works but its awesome for concept data work
 from __future__ import annotations
 import argparse, os, sys, shutil, json, datetime
 from pathlib import Path
