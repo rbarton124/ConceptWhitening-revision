@@ -71,8 +71,12 @@ data/
 runs/
 checkpoints/
 checkpoints-new/
+model_checkpoints/
 old-runs/
 old-runs2/
 runs_proper/
 kaggle.json
 figures/
+figures_layers/
+histories/
+notes/

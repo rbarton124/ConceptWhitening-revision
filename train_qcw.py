@@ -65,12 +65,12 @@ parser.add_argument("--only_load_weights", action="store_true", help="If set, on
 # System
 parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
-parser.add_argument("--log_dir", type=str, default="runs_proper", help="Directory to save logs.")
-parser.add_argument("--checkpoint_dir", type=str, default="checkpoints-new", help="Directory to save checkpoints.")
+parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
+parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
 # Feature toggles
-parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
-parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
-parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
+parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.") # used to work, isnt working lately TODO: ACTUALLY FIX [issue was subspace null mapping issue]
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet TODO: FIX
+parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet TODO: FIX
 
 args = parser.parse_args()
 
@@ -85,7 +85,7 @@ if args.vanilla_pretrain:
     args.cw_align_freq = None
 else:
     try:
-        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]  # Convert to list of integers
+        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]
     except ValueError:
         print("Invalid whitened_layers format. Should be a comma-separated list of integers.")
         if args.whitened_layers == '':
@@ -452,9 +452,9 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
         pbar.set_postfix(postfix_dict)
 
-        writer.add_scalar("Loss", losses.val, iteration)
-        writer.add_scalar("Top1", top1.val, iteration)
-        writer.add_scalar("Top5", top5.val, iteration)
+        writer.add_scalar("Train/Loss", losses.val, iteration)
+        writer.add_scalar("Train/Top1", top1.val, iteration)
+        writer.add_scalar("Train/Top5", top5.val, iteration)
 
 def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_concept, lambda_):
     """

@@ -383,7 +383,7 @@ def main():
     parser.add_argument("--model_checkpoint", required=True, help="Path to model checkpoint.")
     parser.add_argument("--concept_dir", default="", help="Folder with 'concept_val' subdir containing concept data.")
     parser.add_argument("--hl_concepts", default="", help="Comma separated high-level concepts for ConceptDataset.")
-    parser.add_argument("--bboxes_file", default="", help="Optional bboxes.json for bounding boxes.")
+    parser.add_argument("--bboxes_file", default="", help="Optional bboxes.json for bounding boxes. Use if not in concept dataset")
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--depth", type=int, default=18)
     parser.add_argument("--whitened_layers", type=str, default="5")
