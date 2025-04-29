@@ -224,7 +224,7 @@ print(f"[Data] #Main Train: {len(train_loader.dataset)}")
 print(f"[Data] #Val:        {len(val_loader.dataset)}")
 print(f"[Data] #Test:       {len(test_loader.dataset)}")
 
-concept_loaders, concept_ds, subconcept_loaders, subspaces = None, None, None, None # init vars for vanilla pretraining
+concept_loaders, concept_ds, subconcept_loaders, subspaces, subspace_mapping = None, None, None, None, None  # init vars for vanilla pretraining
 # build concept loaders if needed
 if not args.vanilla_pretrain:
     concept_loaders, concept_ds = build_concept_loaders(args)
@@ -271,8 +271,9 @@ if not args.vanilla_pretrain:
         # one axis per concept
         subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
 
-subspace_mapping = concept_ds.subspace_mapping
-print(f"Subspace mapping: {subspace_mapping}")
+if concept_ds:
+    subspace_mapping = concept_ds.subspace_mapping
+    print(f"Subspace mapping: {subspace_mapping}")
 
 model = build_resnet_qcw(
     num_classes=NUM_CLASSES,
