@@ -17,7 +17,7 @@ from collections import defaultdict
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from PIL import ImageFile
+from PIL import ImageFile, Image
 
 from types import SimpleNamespace
 
@@ -25,6 +25,11 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True # allow loading truncated images
 
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
+
+# Masking for case study
+from masking_utils import mask_concepts, apply_per_layer_activation_masks, clear_all_activation_masks, extract_bird_name, analyze_concepts
+from test_qcw import collect_image_paths
+import re
 
 # Global Constants
 NUM_CLASSES     = 200
@@ -59,10 +64,11 @@ parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in
 parser.add_argument("--use_bn_qcw", action="store_true",
                     help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 parser.add_argument("--cw_lambda", type=float, default=0.1, help="Lambda parameter for QCW.")
-parser.add_argument("--mask_concepts", default="", help="Concepts to mask")
+parser.add_argument("--mask_concepts", default="", help="Concepts to mask, usually the subconcepts of a hl concept")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
+parser.add_argument("--only_test", action="store_true", help="If set, skip training and only validate using model from checkpoint")
 # System
 parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
@@ -139,10 +145,29 @@ def build_main_loaders(args):
                               num_workers=args.workers, pin_memory=PIN_MEMORY)
     test_loader  = DataLoader(test_data,  batch_size=args.batch_size, shuffle=False,
                               num_workers=args.workers, pin_memory=PIN_MEMORY)
+    
+    # Special test loader or path for masking (sub)concepts
+    test_masking_loader = None
+    if args.data_test_dir:
+        data_test_dir = os.path.join(args.data_test_dir)
 
-    return train_loader, val_loader, test_loader
+        # Check if it's a folder with class subdirectories
+        try:
+            subdirs = [d for d in os.listdir(data_test_dir) if os.path.isdir(os.path.join(data_test_dir, d))]
+            if len(subdirs) > 0:
+                # Use ImageFolder if subdirectories (i.e. class folders) are present
+                test_masking_data = datasets.ImageFolder(data_test_dir, val_transform)
+                test_masking_loader = DataLoader(test_masking_data, batch_size=args.batch_size, shuffle=False,
+                                                 num_workers=args.workers, pin_memory=PIN_MEMORY)
+            else:
+                # If no subfolders, treat as raw image directory
+                test_masking_loader = data_test_dir # pass as string path to validate()
+        except FileNotFoundError:
+            print(f"[Warning] --data_test_dir={data_test_dir} not found.")
 
-train_loader, val_loader, test_loader = build_main_loaders(args)
+    return train_loader, val_loader, test_loader, test_masking_loader
+
+train_loader, val_loader, test_loader, test_masking_loader = build_main_loaders(args)
 
 # Build Concept Dataset
 def build_concept_loaders(args):
@@ -472,6 +497,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
 
     # separate labeled vs free subconcepts
     sc_to_hl_name = concept_dataset.get_subconcept_to_hl_name_mapping()
+    print(f"subconcept to hl concept mapping: ", sc_to_hl_name)
     hl_subconcepts = defaultdict(lambda: {"labeled": [], "free": []})
 
     label_to_scname = {}
@@ -764,62 +790,6 @@ def compute_alignment_metrics(model, subconcept_loaders, concept_dataset, batche
         "act_strength_ratio": act_strength_ratio_avg
     }
 
-
-def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts_to_mask=None):
-    model.eval()
-    criterion = nn.CrossEntropyLoss().cuda()
-    losses = AverageMeter()
-    top1   = AverageMeter()
-    top5   = AverageMeter()
-
-    # validate concept masking
-    if concept_ds and concepts_to_mask:
-        from masking_utils import mask_concepts, apply_per_layer_activation_masks, clear_all_activation_masks
-        masks = mask_concepts(model, concept_ds, concepts_to_mask)
-        apply_per_layer_activation_masks(model, masks)
-
-    with torch.no_grad():
-        for imgs, lbls in loader:
-            imgs, lbls = imgs.cuda(), lbls.cuda()
-            outs = model(imgs)
-            loss = criterion(outs, lbls)
-            prec1, prec5 = accuracy_topk(outs, lbls, (1,5))
-            losses.update(loss.item(), imgs.size(0))
-            top1.update(prec1, imgs.size(0))
-            top5.update(prec5, imgs.size(0))
-    
-    # reset masking
-    if concept_ds and concepts_to_mask:
-        clear_all_activation_masks(model)
-
-    writer.add_scalar(f"{mode}/Loss", losses.avg, epoch)
-    writer.add_scalar(f"{mode}/Top1", top1.avg, epoch)
-    writer.add_scalar(f"{mode}/Top5", top5.avg, epoch)
-    print(f"[{mode}] Epoch {epoch+1}: Loss={losses.avg:.3f}, Top1={top1.avg:.2f}, Top5={top5.avg:.2f}")
-    return top1.avg
-
-# Save + Resume
-def save_checkpoint(state, is_best, prefix, outdir=args.checkpoint_dir):
-    os.makedirs(outdir, exist_ok=True)
-    ckpt_path = os.path.join(outdir, f"{prefix}_checkpoint.pth")
-    torch.save(state, ckpt_path)
-    if is_best:
-        best_path = os.path.join(outdir, f"{prefix}_best.pth")
-        shutil.copyfile(ckpt_path, best_path)
-        print(f"[Checkpoint] Best => {best_path}")
-
-# Utility Classes
-class AverageMeter:
-    def __init__(self):
-        self.reset()
-    def reset(self):
-        self.val=0; self.sum=0; self.count=0; self.avg=0
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val*n
-        self.count+= n
-        self.avg = self.sum/self.count if self.count>0 else 0
-
 def accuracy_topk(output, target, topk=(1,)):
     maxk = max(topk)
     batch_size = target.size(0)
@@ -834,11 +804,120 @@ def accuracy_topk(output, target, topk=(1,)):
         res.append((c_k*100.0/batch_size).item())
     return tuple(res)
 
+# Utility Classes
+class AverageMeter:
+    def __init__(self):
+        self.reset()
+    def reset(self):
+        self.val=0; self.sum=0; self.count=0; self.avg=0
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val*n
+        self.count+= n
+        self.avg = self.sum/self.count if self.count>0 else 0
+
+def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts_to_mask=None):
+    model.eval()
+    criterion = nn.CrossEntropyLoss().cuda()
+    losses = AverageMeter()
+    top1   = AverageMeter()
+    top5   = AverageMeter()
+
+    # validate concept masking
+    if concept_ds and concepts_to_mask:
+        masks = mask_concepts(model, concept_ds, concepts_to_mask)
+        apply_per_layer_activation_masks(model, masks)
+    
+    # produce alignment metrics if concept masking is applied
+    if concept_ds:
+        label_to_scname = {idx: name for name, idx in concept_ds.sc2idx.items()}
+        subconcept_loaders = [(concept_ds.sc2idx[name], DataLoader(
+            torch.utils.data.Subset(concept_ds, [i for i, (_, _, _, sc) in enumerate(concept_ds.samples) if sc == name]),
+            batch_size=min(32, len(concept_ds)), shuffle=False, num_workers=2))
+            for name in concept_ds.get_subconcept_names()]
+        alignment_metrics = compute_alignment_metrics(
+            model, subconcept_loaders, concept_ds, 1, label_to_scname
+        )
+    
+    # Handle if loader is a directory to raw images
+    if isinstance(loader, str):
+        try:
+            image_paths = collect_image_paths(loader).split(",")
+            transform = transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            ])
+
+            for path in image_paths:
+                img = Image.open(path).convert("RGB")
+                input_tensor = transform(img).unsqueeze(0).cuda()
+                label_str = os.path.basename(os.path.dirname(path))
+                print(f"label: ", label_str)
+                # if not re.match(r'^\\d+$', label_str):
+                #     print(f"[Warning] Skipping {path}, cannot infer numeric label.")
+                #     continue
+                label = torch.tensor([int(label_str)], dtype=torch.long).cuda()
+
+                with torch.no_grad():
+                    output = model(input_tensor)
+                    loss = criterion(output, label)
+                    prec1, prec5 = accuracy_topk(output, label, topk=(1, 5))
+
+                losses.update(loss.item(), 1)
+                top1.update(prec1, 1)
+                top5.update(prec5, 1)
+                print(f"{path} --> Pred: {output.argmax().item()}, True: {label.item()} | Loss: {loss.item():.4f}")
+        except Exception as e:
+            print(f"[Error] Failed to process directory {loader}: {e}")
+
+    else:
+        with torch.no_grad():
+            for imgs, lbls in loader:
+                imgs, lbls = imgs.cuda(), lbls.cuda()
+                outs = model(imgs)
+                loss = criterion(outs, lbls)
+                prec1, prec5 = accuracy_topk(outs, lbls, (1,5))
+                losses.update(loss.item(), imgs.size(0))
+                top1.update(prec1, imgs.size(0))
+                top5.update(prec5, imgs.size(0))
+        
+    # reset masking
+    if concept_ds and concepts_to_mask:
+        clear_all_activation_masks(model)
+
+    writer.add_scalar(f"{mode}/Loss", losses.avg, epoch)
+    writer.add_scalar(f"{mode}/Top1", top1.avg, epoch)
+    writer.add_scalar(f"{mode}/Top5", top5.avg, epoch)
+    print(f"[{mode}] Epoch {epoch+1}: Loss={losses.avg:.3f}, Top1={top1.avg:.2f}, Top5={top5.avg:.2f}")
+
+    if concept_ds:
+        print("[Alignment metrics]")
+        for k, v in alignment_metrics.items():
+            print(f" {k}: {v:.4f}")
+
+    return top1.avg
+
+# Save + Resume
+def save_checkpoint(state, is_best, prefix, outdir=args.checkpoint_dir):
+    os.makedirs(outdir, exist_ok=True)
+    ckpt_path = os.path.join(outdir, f"{prefix}_checkpoint.pth")
+    torch.save(state, ckpt_path)
+    if is_best:
+        best_path = os.path.join(outdir, f"{prefix}_best.pth")
+        shutil.copyfile(ckpt_path, best_path)
+        print(f"[Checkpoint] Best => {best_path}")
+        return best_path
+    return ckpt_path
+
+
 # Main Loop
 def main():
-    global args
-    best_acc = best_prec
+    global args, start_epoch, best_prec
 
+    # resume model and optimizer
+    best_acc = best_prec
     for epoch in range(start_epoch, start_epoch + args.epochs):
         lr_now = adjust_lr(optimizer, epoch, args)
         writer.add_scalar("LR", lr_now, epoch)
@@ -855,9 +934,17 @@ def main():
             "best_prec1": best_acc,
             "optimizer": optimizer.state_dict()
         }
-        save_checkpoint(cstate, is_best, args.prefix)
-
-    test_acc = validate(test_loader, model, args.epochs, writer, mode="Test")
+        best_path = save_checkpoint(cstate, is_best, args.prefix)
+    model.load_state_dict(torch.load(best_path)["state_dict"])
+    print(f"loaded newest weights to model")
+    if args.data_test_dir:
+        # concept_train_root = os.path.join(args.concept_dir, f"concept_train")
+        # analyze_concepts(concept_train_root, concept_ds)
+        test_acc = validate(test_masking_loader, model, args.epochs, writer, mode="Test")
+    else:
+        test_acc = validate(test_loader, model, args.epochs, writer, mode="Test")
+    if args.mask_concepts:
+        print(f"masked concepts: ", args.mask_concepts)
     print(f"[Done] Best Val={best_acc:.2f}, Final Test={test_acc:.2f}")
     writer.close()
 
