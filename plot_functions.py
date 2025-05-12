@@ -1,573 +1,342 @@
 from __future__ import annotations
 
-import argparse
-import json
-import logging
-import math
-import os
-import shutil
-from types import SimpleNamespace
+# -----------------------------------------------------------------------------#
+# Imports & global constants
+# -----------------------------------------------------------------------------#
+import argparse, json, logging, math, os, shutil
 from typing import Dict, List, Sequence
 
 import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import torch
+import numpy as np, pandas as pd, torch
 import torch.nn as nn
 import torchvision.transforms as T
 from sklearn.metrics import roc_auc_score
-from termcolor import cprint
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
-# Reduce console noise
-logging.getLogger("matplotlib").setLevel(logging.WARNING)
-torch.set_printoptions(sci_mode=False)
 
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
-TOPK: int = 5  # how many axes to show in diagnostics
-LOG_FORMAT = "%(levelname)s | %(asctime)s | %(message)s"
+torch.set_printoptions(sci_mode=False)
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
-def resume_checkpoint(model: nn.Module, checkpoint_path: str) -> nn.Module:
-    """Load *any* QCW/BYOL/SimCLR checkpoint, coping with DataParallel prefixes."""
-    if not checkpoint_path or not os.path.isfile(checkpoint_path):
-        logging.warning("[Checkpoint] No checkpoint at %s", checkpoint_path)
-        return model
+TOPK   = 5
+LOGFMT = "%(levelname)s | %(asctime)s | %(message)s"
 
-    logging.info("[Checkpoint] Loading weights from %s", checkpoint_path)
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    raw_sd = ckpt.get("state_dict", ckpt)
-    model_sd = model.state_dict()
-    clean_sd: Dict[str, torch.Tensor] = {}
+# -----------------------------------------------------------------------------#
+# Model & data helpers
+# -----------------------------------------------------------------------------#
+def _load_checkpoint(model: nn.Module, ckpt_path: str) -> nn.Module:
+    """Load QCW checkpoints, coping with DataParallel prefixes."""
+    if not ckpt_path or not os.path.isfile(ckpt_path):
+        logging.warning("No checkpoint at %s", ckpt_path);  return model
 
-    def _rename(k: str) -> str:
-        if k.startswith("module."):
-            k = k[7:]
-        if k.startswith("model."):
-            k = k[6:]
-        if not k.startswith("backbone.") and f"backbone.{k}" in model_sd:
-            return f"backbone.{k}"
-        if k.startswith("fc.") and f"backbone.{k}" in model_sd:
-            return f"backbone.{k}"
-        return k
-
-    for ckpt_k, ckpt_v in raw_sd.items():
-        new_k = _rename(ckpt_k)
-        if new_k in model_sd and ckpt_v.shape == model_sd[new_k].shape:
-            clean_sd[new_k] = ckpt_v
-
-    missing, unexpected = model.load_state_dict(clean_sd, strict=False)
-    if missing:
-        logging.debug("Missing keys: %s", missing)
-    if unexpected:
-        logging.debug("Unexpected keys: %s", unexpected)
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    raw  = ckpt.get("state_dict", ckpt)
+    msd  = model.state_dict(); clean = {}
+    for k, v in raw.items():
+        k2 = k.replace("module.", "").replace("model.", "")
+        if not k2.startswith("backbone.") and f"backbone.{k2}" in msd:   k2 = f"backbone.{k2}"
+        if k2.startswith("fc.")        and f"backbone.{k2}" in msd:      k2 = f"backbone.{k2}"
+        if k2 in msd and v.shape == msd[k2].shape:  clean[k2] = v
+    model.load_state_dict(clean, strict=False)
+    logging.info("Loaded %d/%d tensors from %s", len(clean), len(raw), ckpt_path)
     return model
 
 
 def build_model(ckpt: str, depth: int, whitened: List[int], act_mode: str,
                 subspaces: dict | None, num_classes: int) -> nn.Module:
-    model = build_resnet_qcw(num_classes=num_classes,
-                             depth=depth,
-                             whitened_layers=whitened,
-                             act_mode=act_mode,
-                             subspaces=subspaces)
-    model = resume_checkpoint(model, ckpt)
-    model = nn.DataParallel(model).cuda().eval()
-    return model
+    mdl = build_resnet_qcw(num_classes=num_classes, depth=depth,
+                           whitened_layers=whitened, act_mode=act_mode,
+                           subspaces=subspaces)
+    mdl = _load_checkpoint(mdl, ckpt)
+    return nn.DataParallel(mdl).cuda().eval()
 
 
-def build_dataset(root: str, hl_filter: Sequence[str], bboxes: str,
-                  crop_mode: str) -> ConceptDataset:
+def build_dataset(root: str, hl_filter: Sequence[str],
+                  bboxes: str, crop_mode: str) -> ConceptDataset:
     tfm = T.Compose([
-        T.RandomResizedCrop(224),
-        T.RandomHorizontalFlip(),
-        T.ToTensor(),
-        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    ])
-    return ConceptDataset(
-        root_dir=os.path.join(root, "concept_val"),
-        bboxes_file=bboxes,
-        high_level_filter=list(hl_filter),
-        transform=tfm,
-        crop_mode=crop_mode,
-    )
+        T.RandomResizedCrop(224), T.RandomHorizontalFlip(),
+        T.ToTensor(), T.Normalize([0.485, 0.456, 0.406],
+                                  [0.229, 0.224, 0.225])])
+    return ConceptDataset(root_dir=os.path.join(root, "concept_val"),
+                          bboxes_file=bboxes, high_level_filter=list(hl_filter),
+                          transform=tfm, crop_mode=crop_mode)
 
-
-class HookRunner:
-    """Context‑manager to grab activations from the final QCW layer."""
-
-    def __init__(self, model: nn.Module, num_concepts: int):
-        self.storage = SimpleNamespace(out=None)
+# -----------------------------------------------------------------------------#
+# Activation collector
+# -----------------------------------------------------------------------------#
+class _Collector:
+    """Small helper to grab activations from the last QCW layer."""
+    def __init__(self, model: nn.Module, K: int):
+        self.out = None
         layer = get_last_qcw_layer(model.module if isinstance(model, nn.DataParallel) else model)
+        layer.register_forward_hook(lambda _,__,y: setattr(self, "out", y.mean((2,3))[:,:K].cpu()))
 
-        def _hook(_, __, output):
-            with torch.no_grad():
-                self.storage.out = output.mean(dim=(2, 3))[:, :num_concepts].cpu()
+    def run(self, model, loader, device="cuda"):
+        acts, labels = [], []
+        for imgs, lbl, _ in tqdm(loader, desc="Collecting Activations"):
+            _ = model(imgs.to(device));  acts.append(self.out.detach().cpu().numpy()); labels.append(lbl.numpy())
+        return np.concatenate(acts), np.concatenate(labels)
 
-        self.handle = layer.register_forward_hook(_hook)
-        self.model = model
+# -----------------------------------------------------------------------------#
+# Purity / hierarchy metrics
+# -----------------------------------------------------------------------------#
+def _auc(mask: np.ndarray, scores: np.ndarray) -> float:
+    if mask.sum() in {0, len(mask)}:  return float("nan")
+    return roc_auc_score(mask.astype(int), scores)
 
-    def run_loader(self, loader: DataLoader, device: str = "cuda") -> tuple[np.ndarray, np.ndarray]:
-        acts: List[np.ndarray] = []
-        labels: List[np.ndarray] = []
-        for imgs, sc_lbl, _ in tqdm(loader, desc="Collecting feats"):
-            imgs = imgs.to(device)
-            self.storage.out = None
-            _ = self.model(imgs)
-            if self.storage.out is None:
-                continue  # Skip if hook didn't fire (can happen in very old PyTorch versions)
-            acts.append(self.storage.out.numpy())
-            labels.append(sc_lbl.numpy())
-        return np.concatenate(acts, 0), np.concatenate(labels, 0)
-
-    def close(self):
-        self.handle.remove()
-
-
-# -----------------------------------------------------------------------------
-# Analysis classes
-# -----------------------------------------------------------------------------
 
 class PurityAnalyzer:
-    """Compute (sub‑)concept purity, diagnostics, and CSV."""
+    """Compute classic purity + Δ_max & EnergyRatio."""
+    def __init__(self, model, ds: ConceptDataset, bs=64, device="cuda",
+                 out_dir="qcw_plots", cfg: argparse.Namespace | None = None):
+        self.cfg = cfg or argparse.Namespace(auc_max=False, energy_ratio=False, verbose=False)
+        self.ds, self.model, self.device, self.out_dir = ds, model, device, out_dir
+        self.sc_names = ds.get_subconcept_names();  self.K = len(self.sc_names)
 
-    def __init__(self, model: nn.Module, ds: ConceptDataset, *,
-                 batch_size: int = 64, device: str = "cuda", topk: int = TOPK,
-                 output_dir: str = "qcw_plots",
-                 cfg: argparse.Namespace | None = None):
-        self.ds = ds
-        self.model = model
-        self.bs = batch_size
-        self.device = device
-        self.topk = topk
-        self.output_dir = output_dir
-        self.sc_names = ds.get_subconcept_names()
-        self.num_concepts = len(self.sc_names)
-        self._collect()  # fills self.acts / self.labels
+        # collect activations once
+        loader  = DataLoader(ds, bs, shuffle=False, pin_memory=True)
+        acts, y = _Collector(model, self.K).run(model, loader, device)
+        self.acts, self.y = acts, y
 
-        # Maps for hierarchy
-        self.subspace_map = ds.subspace_mapping  # HL → list[int]
-        self.sc_to_hl = ds.get_subconcept_to_hl_name_mapping()  # idx → HL
-        self.axis_to_hl = {idx: hl for idx, hl in self.sc_to_hl.items()}
+        # hierarchy maps
+        self.subspace = ds.subspace_mapping                 # HL → list[axis]
+        self.sc2hl    = ds.get_subconcept_to_hl_name_mapping()  # axis → HL
+        self.labeled  = {i for i,n in enumerate(self.sc_names) if not ds.is_free_subconcept_name(n)}
 
-        # Pre‑split
-        self.labeled, self.free = [], []
-        for i, nm in enumerate(self.sc_names):
-            (self.free if ds.is_free_subconcept_name(nm) else self.labeled).append(i)
-        self.labeled_set = set(self.labeled)
-        
-        # keep full CLI so we know which extras to compute
-        self.cfg = cfg or SimpleNamespace(auc_max=False, energy_ratio=False)
+    # -------------------------------------------------------------------------#
+    def compute(self) -> Dict[str, dict]:
+        info = {}
+        global_max = self.acts.max(1) if self.cfg.auc_max else None
+        hl_max_cache = {hl: self.acts[:, ax].max(1) if self.cfg.auc_max else None
+                        for hl, ax in self.subspace.items()}
 
-        # ---------------- internal helpers ----------------
+        for idx, name in enumerate(self.sc_names):
+            hl, mask = self.sc2hl[idx], (self.y == idx)
+            axes_hl  = self.subspace[hl]
+            if not mask.any():  # skip empty subclasses
+                info[name] = {"best_axis_auc": float("nan")};  continue
 
-    def _collect(self) -> None:
-        loader = DataLoader(self.ds, batch_size=self.bs, shuffle=False, pin_memory=True)
-        runner = HookRunner(self.model, self.num_concepts)
-        self.acts, self.labels = runner.run_loader(loader, self.device)
-        runner.close()
+            means = self.acts[mask].mean(0)
 
-    def _roc_auc(self, mask: np.ndarray,
-               axis: int | None = None,
-               custom: np.ndarray | None = None) -> float:
-        """If `custom` is given use that (shape [N]), else self.acts[:, axis]."""
-        scores = custom if custom is not None else self.acts[:, axis]
-        if mask.sum() in {0, len(mask)}:
-            return float("nan")
-        return roc_auc_score(mask.astype(int), scores)
+            # ---------------- primary / secondary axes -----------------------
+            if idx in self.labeled:               # labeled concept → axis = itself
+                prim_ax, prim_auc = idx, _auc(mask, self.acts[:, idx])
+                leak_idx = leak_auc = None
+                # For labeled, 'unlabeled_axis_*' is not meaningful
+                unlabeled_axis_idx = unlabeled_axis_auc = None
+            else:                                 # free concept → best unlabeled axis
+                unlabeled = [a for a in range(self.K) if a not in self.labeled]
+                prim_ax = max(unlabeled, key=means.__getitem__)
+                prim_auc = _auc(mask, self.acts[:, prim_ax])
+                # If a labeled axis leaks (outperforms the unlabeled), record it as leak
+                best_g = int(means.argmax())
+                if best_g != prim_ax and best_g in self.labeled:
+                    leak_idx, leak_auc = best_g, _auc(mask, self.acts[:, best_g])
+                else:
+                    leak_idx = leak_auc = None
+                unlabeled_axis_idx, unlabeled_axis_auc = prim_ax, prim_auc
 
-    # ---------------- public API ----------------
-
-    def compute(self, subspace_eval: bool = False) -> Dict[str, dict]:
-        info: Dict[str, dict] = {}
-        rows: List[dict] = []
-
-        # Pre-compute global max scores since they're the same for all concepts
-        if self.cfg.auc_max:
-            global_max_scores = self.acts.max(1)
-        else:
-            global_max_scores = None
-            
-        for idx in range(self.num_concepts):
-            name = self.sc_names[idx]
-            hl = self.sc_to_hl[idx]
-            hl_axes = self.subspace_map[hl]
-            mask = self.labels == idx
-            
-            # Guard against empty positive set
-            if not mask.any():
-                # Create a dictionary with nan for all numerical values
-                info[name] = {
-                    "is_free": idx in self.free,
-                    "label_auc": float("nan"),
-                    "best_axis_auc": float("nan"),
-                    "best_axis_idx": -1,
-                    "best_axis_is_labeled": None,
-                    "unlabeled_axis_auc": None,
-                    "unlabeled_axis_idx": None,
-                    "auc_max_global": float("nan"),
-                    "auc_max_hl": float("nan"),
-                    "delta_max": float("nan"),
-                    "energy_ratio": float("nan"),
-                }
-                rows.append({
-                    "sc_name": name,
-                    "hl_name": hl,
-                    "is_free": idx in self.free,
-                    "slice_axes": " ".join(map(str, hl_axes)),
-                    "best_ax_global": -1,
-                    "auc_global": float("nan"),
-                    "best_ax_hl": -1,
-                    "auc_hl": float("nan"),
-                    "mass_global": float("nan"),
-                    "mass_hl": float("nan"),
-                    "mass_retained_pct": float("nan"),
-                    "topk_global": "",
-                    "auc_max_global": float("nan"),
-                    "auc_max_hl": float("nan"),
-                    "delta_max": float("nan"),
-                    "energy_ratio": float("nan"),
-                })
-                continue
-                
-            sub_acts = self.acts[mask]
-            mean_acts = sub_acts.mean(0)
-
-            # ----------------------------------------------------------------
-            # NEW - hierarchy-aware metrics that do NOT rely on single axis
-            # ----------------------------------------------------------------
-            # Compute HL-max scores for this concept's HL (can't be precomputed globally)
+            # ---------------- hierarchy metrics ------------------------------
             if self.cfg.auc_max:
-                hl_max_scores = self.acts[:, hl_axes].max(1)
-                auc_max_global = self._roc_auc(mask, custom=global_max_scores)
-                auc_max_hl = self._roc_auc(mask, custom=hl_max_scores)
-                delta_max = auc_max_global - auc_max_hl
+                auc_gmax   = _auc(mask, global_max)
+                auc_hlmax  = _auc(mask, hl_max_cache[hl])
+                delta_max  = auc_hlmax - auc_gmax  # Positive delta means HL subspace outperforms global
             else:
-                auc_max_global = auc_max_hl = delta_max = None
+                auc_gmax = auc_hlmax = delta_max = None
 
             if self.cfg.energy_ratio:
-                # energy for positive samples only
-                g_energy = np.linalg.norm(self.acts[mask], axis=1).mean()
-                h_energy = np.linalg.norm(self.acts[mask][:, hl_axes], axis=1).mean()
-                energy_ratio = h_energy / (g_energy + 1e-9)
+                e_full = np.linalg.norm(self.acts[mask],     axis=1).mean()
+                e_hl   = np.linalg.norm(self.acts[mask][:, axes_hl], axis=1).mean()
+                e_ratio = e_hl / (e_full + 1e-9)
             else:
-                energy_ratio = None
+                e_ratio = None
 
-            # ---------- NEW LOGIC -------------------------------------------------
-            # 1) global and HL-local maxima (same as before)
-            best_g = int(mean_acts.argmax())
-            auc_g = self._roc_auc(mask, best_g)
-
-            hl_means = mean_acts[hl_axes]
-            best_hl = hl_axes[int(hl_means.argmax())]
-            auc_hl = self._roc_auc(mask, best_hl)
-
-            # 2) choose PRIMARY axis & SECONDARY (diagnostic) axis
-            # -----------------------------------------------------
-            if idx in self.free:
-                # -- Candidate pool = unlabeled axes ---------------
-                unlabeled_axes = [a for a in range(self.num_concepts)
-                                  if a not in self.labeled_set]
-                if not unlabeled_axes:
-                    # degenerate case – fall back to best_hl
-                    primary_ax = best_hl
-                else:
-                    ul_means = mean_acts[unlabeled_axes]
-                    primary_ax = unlabeled_axes[int(ul_means.argmax())]
-
-                primary_auc = self._roc_auc(mask, primary_ax)
-
-                # SECONDARY axis = best overall *if* it beats primary
-                if mean_acts[best_g] > mean_acts[primary_ax] + 1e-6:
-                    secondary_ax = best_g
-                    secondary_auc = auc_g
-                else:
-                    secondary_ax = None
-                    secondary_auc = None
-            else:
-                # ----- LABELLED CONCEPT -------------------------------------------
-                primary_ax = idx
-                primary_auc = self._roc_auc(mask, idx)
-                secondary_ax = None
-                secondary_auc = None
-
-            # Decide which axis drives the classic single-axis purity plot
-            use_axis = primary_ax if not subspace_eval else (
-                primary_ax if (primary_ax in hl_axes) else best_hl)
-            use_auc = self._roc_auc(mask, use_axis)
-
-            is_lbl = use_axis in self.labeled_set
-            unl_auc = unl_idx = None
-            # (We keep unl_* keys for backward compatibility but they now mean
-            #  "secondary" rather than "unlabeled fallback".)
-            if secondary_ax is not None:
-                unl_idx, unl_auc = secondary_ax, secondary_auc
-
+            # store
+            # CSV columns: 'unlabeled_axis_*' is always the primary (blue) for free concepts; 'leak_axis_*' is the labeled leak (red) if present.
             info[name] = {
-                "is_free": idx in self.free,
-                "label_auc": None if idx in self.free else use_auc,
-                "best_axis_auc": use_auc,
-                "best_axis_idx": use_axis,
-                "best_axis_is_labeled": is_lbl,
-                "unlabeled_axis_auc": unl_auc,
-                "unlabeled_axis_idx": unl_idx,
-                # NEW hierarchy metrics
-                "auc_max_global": auc_max_global,
-                "auc_max_hl":     auc_max_hl,
-                "delta_max":      delta_max,
-                "energy_ratio":   energy_ratio,
-                # NEW explicit names to avoid confusion
-                "primary_axis_idx":    primary_ax,
-                "primary_axis_auc":    primary_auc,
-                "secondary_axis_idx":  secondary_ax,
-                "secondary_axis_auc":  secondary_auc,
+                "is_free": idx not in self.labeled,
+                "best_axis_idx": prim_ax,
+                "best_axis_auc": prim_auc,
+                "best_axis_is_labeled": prim_ax in self.labeled,
+                # For labeled concepts, these are None
+                "unlabeled_axis_idx": unlabeled_axis_idx if idx not in self.labeled else None,
+                "unlabeled_axis_auc": unlabeled_axis_auc if idx not in self.labeled else None,
+                # For free concepts, leak axis is present if a labeled axis leaks
+                "leak_axis_idx": leak_idx,
+                "leak_axis_auc": leak_auc,
+                "auc_max_global": auc_gmax, "auc_max_hl": auc_hlmax,
+                "delta_max": delta_max,    "energy_ratio": e_ratio,
             }
+            # Dropped CSV columns: best_ax_hl, auc_hl, mass_global, mass_hl, mass_retained_pct, topk_global (see patch guide for rationale)
 
-            # ---- diagnostics block ----
-            rows.append(self._diagnostic_row(name, hl, idx in self.free, hl_axes,
-                                             mean_acts, mask, best_g, auc_g, best_hl, auc_hl,
-                                             auc_max_global, auc_max_hl, delta_max, energy_ratio))
 
-        self._save_csv(rows)
+            # optional terse diagnostics
+            if self.cfg.verbose and not getattr(self, "_printed", False):
+                self._printed = True
+                kept = np.linalg.norm(self.acts[mask][:, axes_hl], axis=1).mean()
+                full = np.linalg.norm(self.acts[mask],            axis=1).mean()
+                logging.info("▶ %s  kept %.1f%% energy", name, 100*kept/(full+1e-9))
+
+        # dump CSV
+        os.makedirs(self.out_dir, exist_ok=True)
+        pd.DataFrame(info).T.to_csv(os.path.join(self.out_dir, "result.csv"))
         return info
 
-    # ---------------- diagnostics / csv ----------------
+# -----------------------------------------------------------------------------#
+# Top-k image extractor
+# -----------------------------------------------------------------------------#
+class TopKExtractor:
+    def __init__(self, acts, labels, ds, out_dir, model=None):
+        self.acts, self.labels, self.ds, self.out = acts, labels, ds, out_dir
+        self.model = model
 
-    def _diagnostic_row(self, scn: str, hl: str, is_free: bool, hl_axes: List[int],
-                     mean_acts: np.ndarray, mask: np.ndarray,
-                     best_g: int, auc_g: float, best_hl: int, auc_hl: float,
-                     auc_max_global=None, auc_max_hl=None, delta_max=None, energy_ratio=None) -> dict:
-        sub_acts = self.acts[mask]
-        mass_g = float(np.abs(sub_acts).mean())
-        mass_h = float(np.abs(sub_acts[:, hl_axes]).mean())
-        pct = 100 * mass_h / (mass_g + 1e-9)
+    def dump(self, k=10, save_transformed=False):
+        from torchvision.utils import save_image
+        os.makedirs(self.out, exist_ok=True)
+        mean, std = torch.tensor([0.485,0.456,0.406]), torch.tensor([0.229,0.224,0.225])
+        labeled = {i for i,n in enumerate(self.ds.get_subconcept_names())
+                   if not self.ds.is_free_subconcept_name(n)}
 
-        # pretty console block (only for one concept to avoid spam)
-        if self.device == "cuda" and len(getattr(self, "_printed", set())) < 1:  # type: ignore[attr-defined]
-            self._printed = getattr(self, "_printed", set())  # type: ignore[attr-defined]
-            if scn not in self._printed:
-                self._printed.add(scn)
-                top_ids = mean_acts.argsort()[::-1][: self.topk]
-                top_vals = mean_acts[top_ids]
-                top_hls = [self.axis_to_hl[a] for a in top_ids]
-                off_slice = [a for a in top_ids if a not in hl_axes]
-                print("\n[Diagnostic] Sample analysis:")
-                print(f"Subconcept: {scn} (HL: {hl})")
-                print(f"  Top-{self.topk} axes: {list(top_ids)}")
-                print(f"  Top-{self.topk} values: {[f'{v:.3f}' for v in top_vals]}")
-                print(f"  Top-{self.topk} HLs: {top_hls}")
-                print(f"  Axes in this HL: {hl_axes}")
-                print(f"  Axes outside HL: {off_slice}")
-                if off_slice:
-                    cprint(f"  ⚠️  Found {len(off_slice)} top-{self.topk} axes outside this concept's HL space", "red")
-                print(f"Total activation before masking: {mass_g:,.2f}")
-                print(f"Total activation after masking:  {mass_h:,.2f}")
-                print(f"Percentage retained: {pct:.2f}%")
-                if pct > 95:
-                    cprint("⚠️  WARNING: Almost 100% of activation retained after masking.", "red")
-                
-                # Optional readout of new metrics
-                if self.cfg.auc_max and delta_max is not None:
-                    print(f"Δ_max (leakage gap): {delta_max:.3f} "
-                          f"[global {auc_max_global:.3f} vs HL {auc_max_hl:.3f}]")
-                if self.cfg.energy_ratio and energy_ratio is not None:
-                    print(f"Energy ratio inside slice: {energy_ratio:.3f}")
-
-        return {
-            "sc_name": scn,
-            "hl_name": hl,
-            "is_free": is_free,
-            "slice_axes": " ".join(map(str, hl_axes)),
-            "best_ax_global": best_g,
-            "auc_global": auc_g,
-            "best_ax_hl": best_hl,
-            "auc_hl": auc_hl,
-            "mass_global": mass_g,
-            "mass_hl": mass_h,
-            "mass_retained_pct": pct,
-            "topk_global": " ".join(
-                f"{a}:{mean_acts[a]:.3f}" for a in mean_acts.argsort()[::-1][: self.topk]
-            ),
-            "auc_max_global": auc_max_global,
-            "auc_max_hl":     auc_max_hl,
-            "delta_max":      delta_max,
-            "energy_ratio":   energy_ratio,
-        }
-
-    def _save_csv(self, rows: List[dict]) -> None:
-        os.makedirs(self.output_dir, exist_ok=True)
-        path = os.path.join(self.output_dir, "result.csv")
-        pd.DataFrame(rows).to_csv(path, index=False)
-        logging.info("[CSV] Diagnostics → %s", path)
-
-
-class TopKImageExtractor:
-    """Dump images that maximally activate chosen axes (re‑uses cached activations)."""
-
-    def __init__(self, acts: np.ndarray, labels: np.ndarray, ds: ConceptDataset,
-                 out_dir: str, model: nn.Module | None = None):
-        self.acts, self.labels, self.ds = acts, labels, ds
-        self.out_dir = out_dir
-        self.model = model  # only needed if saving transformed
-
-    def dump(self, k: int = 10, save_transformed: bool = False,
-             mean: List[float] | None = None, std: List[float] | None = None,
-             device: str = "cuda") -> None:
-        from torchvision.utils import save_image  # Import once at the method level
-        mean = mean or [0.485, 0.456, 0.406]
-        std = std or [0.229, 0.224, 0.225]
-        sc_names = self.ds.get_subconcept_names()
-        sc_count = len(sc_names)
-        labeled = [i for i, n in enumerate(sc_names) if not self.ds.is_free_subconcept_name(n)]
-        labeled_set = set(labeled)
-
-        # helpers
-        def _best_unlabeled_axis(fc_idx: int) -> int | None:
-            mask = self.labels == fc_idx
-            if not mask.any():
-                return None
-            means = self.acts[mask].mean(0)
-            for ax in means.argsort()[::-1]:
-                if ax not in labeled_set:
-                    return int(ax)
-            return None
-
-        def _unnorm(t: torch.Tensor) -> torch.Tensor:
-            m = torch.tensor(mean, dtype=t.dtype, device=t.device)[:, None, None]
-            s = torch.tensor(std, dtype=t.dtype, device=t.device)[:, None, None]
-            return t.mul(s).add(m).clamp(0, 1)
-
-        os.makedirs(self.out_dir, exist_ok=True)
+        # re-load tensors once if we need transformed images
+        imgs_all = None
         if save_transformed:
-            # need images – re‑load via DataLoader once
-            logging.info("[Top‑K] Re‑loading images for saving …")
-            loader = DataLoader(self.ds, batch_size=64, shuffle=False, pin_memory=True)
-            imgs_all: List[torch.Tensor] = []
-            for imgs, _, _ in tqdm(loader):
-                imgs_all.append(imgs)
-            imgs_all = torch.cat(imgs_all, 0)
+            loader = DataLoader(self.ds, 64, shuffle=False, pin_memory=True)
+            imgs_all = torch.cat([b[0] for b in loader])
 
-        for idx, scn in enumerate(sc_names):
-            axis = idx if idx in labeled_set else _best_unlabeled_axis(idx)
-            if axis is None:
-                continue
-            scores = self.acts[:, axis]
-            top_idx = scores.argsort()[::-1][:k]
-            sc_dir = os.path.join(self.out_dir, scn.replace("/", "_"))
-            os.makedirs(sc_dir, exist_ok=True)
-            for rank, data_idx in enumerate(top_idx):
-                dst = os.path.join(sc_dir, f"rank_{rank + 1}.jpg")
+        for idx, scn in enumerate(self.ds.get_subconcept_names()):
+            ax = idx if idx in labeled else self._best_unlabeled(idx, labeled)
+            if ax is None: continue
+            top_idx = self.acts[:, ax].argsort()[::-1][:k]
+            dst_dir = os.path.join(self.out, scn.replace("/", "_"));  os.makedirs(dst_dir, exist_ok=True)
+            for rnk, j in enumerate(top_idx):
+                dst = os.path.join(dst_dir, f"rank_{rnk+1}.jpg")
                 if save_transformed:
-                    save_image(_unnorm(imgs_all[data_idx].cpu()), dst)
+                    img = imgs_all[j].clone()
+                    img.mul_(std[:,None,None]).add_(mean[:,None,None]).clamp_(0,1)
+                    save_image(img.cpu(), dst)
                 else:
-                    src_path = self.ds.samples[data_idx][0]  # Get image path from samples
-                    shutil.copy2(src_path, dst)
-        logging.info("[Top‑K] Images dumped → %s", self.out_dir)
+                    shutil.copy2(self.ds.samples[j][0], dst)
+        logging.info("Top-k images saved to %s", self.out)
 
+    def _best_unlabeled(self, c_idx, labeled):
+        mask = self.labels == c_idx
+        if not mask.any(): return None
+        means = self.acts[mask].mean(0)
+        for ax in means.argsort()[::-1]:
+            if ax not in labeled: return int(ax)
+        return None
 
-# -----------------------------------------------------------------------------
-# Plotting helpers
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------#
+# Plots
+# -----------------------------------------------------------------------------#
+def bar_plot(info: Dict[str, dict], out_path: str, show_values: bool = True):
+    import matplotlib.pyplot as plt, numpy as np, pandas as pd, math, matplotlib.patches as mpatches
 
-def bar_plot(concept_info: Dict[str, dict], out_path: str) -> None:
-    """
-    Re-implement the original "dual-bar" purity figure.
+    df = pd.DataFrame(info).T
+    df = df.sort_values("best_axis_auc", ascending=False).reset_index()
+    N  = len(df)
 
-    ─ red  = axis is labelled (primary for labeled concepts, secondary when labeled axis leaks)
-    ─ blue = axis is unlabelled (primary for free concepts)
-    """
-    import math
-    import matplotlib.patches as mpatches
+    prim_col = df["best_axis_is_labeled"].map({True: "red", False: "blue"})
+    leak_col  = np.where(df["leak_axis_idx"].notna(), "red", "blue") # Leak bar is red if present, else blue
+    fig, ax = plt.subplots(figsize=(max(6, N), 6))
 
-    # --- sort by primary-AUC descending (same rule as before) -----------------
-    ordered = sorted(
-        concept_info.items(),
-        key=lambda kv: kv[1]["best_axis_auc"]
-        if not math.isnan(kv[1]["best_axis_auc"])
-        else -999,
-        reverse=True,
-    )
+    ax.bar(np.arange(N), df["best_axis_auc"], width=.6, color=prim_col, label="Primary axis") # Primary bars
 
-    plt.figure(figsize=(12, 6))
-    MAIN_W, Fallback_W = 0.5, 0.3   # identical to legacy
-    x_positions = list(range(len(ordered)))
+    # Leak bars
+    leak_mask = df["leak_axis_auc"].notna()
+    ax.bar(np.where(leak_mask)[0] + .25,
+           df.loc[leak_mask, "leak_axis_auc"],
+           width=.25, color="red", alpha=.8, label="Labeled leak axis")
 
-    def _color(is_lbl: bool) -> str:
-        return "red" if is_lbl else "blue"
+    # Value labels
+    if show_values:
+        for i, (y, idx) in enumerate(zip(df["best_axis_auc"], df["best_axis_idx"])):
+            ax.text(i, y + .01, f"A{idx}:{y:.2f}", ha="center", va="bottom", fontsize=8)
+        for i in np.where(leak_mask)[0]:
+            y2, idx2 = df.loc[i, ["leak_axis_auc", "leak_axis_idx"]]
+            if not pd.isna(y2) and not pd.isna(idx2):
+                ax.text(i + .25, y2 + .01, f"A{int(idx2)}:{y2:.2f}", ha="center",
+                        va="bottom", fontsize=8, color="red")
 
-    # -------------------------------------------------------------------------
-    for i, (sc_name, info) in enumerate(ordered):
-        primary_auc = info["best_axis_auc"]
-        primary_idx = info["best_axis_idx"]
-        primary_is_labeled = info["best_axis_is_labeled"]
-        primary_color = _color(primary_is_labeled)
-        
-        # 1. For free concepts with both bars, draw primary and secondary with offset
-        if info["is_free"] and info["unlabeled_axis_auc"] is not None:
-            secondary_auc = info["unlabeled_axis_auc"]
-            secondary_idx = info["unlabeled_axis_idx"]
-            
-            # Important: For free concepts, always draw unlabeled primary bar on left,
-            # labeled secondary bar on right with different width and higher z-order
-            # Primary bar (unlabeled, blue)
-            if not math.isnan(primary_auc):
-                plt.bar(i - 0.05, primary_auc, width=MAIN_W, color="blue", zorder=2)
-                plt.text(
-                    i - 0.05,
-                    primary_auc + 0.01,
-                    f"Ax {primary_idx} ({primary_auc:.2f})",
-                    ha="center", va="bottom", fontsize=8, zorder=3
-                )
-                
-            # Secondary bar (labeled, red, always on top and narrower)
-            if secondary_auc is not None and not math.isnan(secondary_auc):
-                plt.bar(i + 0.12, secondary_auc, width=0.25, color="red", zorder=5) 
-                plt.text(
-                    i + 0.12,
-                    secondary_auc + 0.01,
-                    f"Ax {secondary_idx} ({secondary_auc:.2f})",
-                    ha="center", va="bottom", fontsize=8, zorder=6
-                )
-        else:
-            # Single bar case (labeled concept)
-            if not math.isnan(primary_auc):
-                plt.bar(i, primary_auc, width=MAIN_W, color=primary_color, zorder=2)
-                plt.text(
-                    i,
-                    primary_auc + 0.01,
-                    f"Ax {primary_idx} ({primary_auc:.2f})",
-                    ha="center", va="bottom", fontsize=8, zorder=3
-                )
+    # Cosmetics
+    ax.set_xticks(np.arange(N))
+    ax.set_xticklabels(df["index"], rotation=45, ha="right")
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("AUC (concept purity)")
+    ax.set_title("Concept Purity")
+    ax.legend(handles=[
+        mpatches.Patch(color="blue", label="Unlabeled axis"),
+        mpatches.Patch(color="red",  label="Labeled axis"),
+    ])
 
-    # --- cosmetics -----------------------------------------------------------
-    plt.xticks(x_positions, [n for n, _ in ordered], rotation=45, ha="right")
-    plt.ylabel("AUC (Concept Purity)")
-    plt.title("Concept Purity")
-    plt.ylim(0, 1)
     plt.tight_layout()
-
-    plt.legend(
-        handles=[
-            mpatches.Patch(color="red", label="Labeled Axis"),
-            mpatches.Patch(color="blue", label="Unlabeled Axis"),
-        ],
-        loc="upper right",
-    )
-
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=120)
     plt.close()
-    logging.info("[PNG] Bar-plot saved → %s", out_path)
+    logging.info("Bar-plot saved to %s", out_path)
 
+# -----------------------------------------------------------------------------#
+# Hierarchy plot (Δ-max  &  Energy-ratio)
+# -----------------------------------------------------------------------------#
+def hierarchy_plot(info: Dict[str, dict], out_path: str,
+                   show_delta: bool = True, show_energy: bool = True):
+    if not (show_delta or show_energy):
+        logging.info("No hierarchy metrics requested → skip extra plot.")
+        return
 
-# -----------------------------------------------------------------------------
+    import pandas as pd, numpy as np, matplotlib.pyplot as plt
+
+    df = pd.DataFrame(info).T
+    cols = []
+    if show_delta  and "delta_max"   in df.columns: cols.append("delta_max")
+    if show_energy and "energy_ratio" in df.columns: cols.append("energy_ratio")
+    if not cols:
+        logging.warning("Hierarchy metrics absent in `info` → skip plot.")
+        return
+
+    # Same ordering as purity-bars for easy cross-reading
+    df = df.sort_values("best_axis_auc", ascending=False).reset_index()
+    n  = len(df)
+
+    n_sub = len(cols)
+    fig, axes = plt.subplots(n_sub, 1, figsize=(max(6, n), 3*n_sub),
+                             sharex=True)
+
+    if n_sub == 1:
+        axes = [axes]                       # make iterable
+
+    colors = ["steelblue" if fr else "orange"
+              for fr in df["is_free"]]     # colour free vs labelled concepts
+
+    for ax, metric in zip(axes, cols):
+        ax.bar(np.arange(n), df[metric], color=colors)
+        ax.set_ylabel(("Δ-max" if metric=="delta_max" else "Energy ratio"))
+        ax.set_ylim(0, 1)
+        ax.grid(axis="y", ls=":", alpha=.4)
+
+    axes[-1].set_xticks(np.arange(n))
+    axes[-1].set_xticklabels(df["index"], rotation=45, ha="right")
+    axes[0].set_title("Hierarchy metrics (slice vs. global)")
+
+    # Legend only once
+    axes[0].legend(handles=[
+        plt.Rectangle((0,0),1,1,color="steelblue", label="free concept"),
+        plt.Rectangle((0,0),1,1,color="orange",    label="labelled concept"),
+    ], loc="upper right")
+
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path, dpi=120)
+    plt.close()
+    logging.info("Hierarchy plot saved to %s", out_path)
+
+# -----------------------------------------------------------------------------#
 # CLI
-# -----------------------------------------------------------------------------
-
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser("QCW concept analyzer (refactored)")
+# -----------------------------------------------------------------------------#
+def get_args():
+    p = argparse.ArgumentParser("QCW concept analyzer (compact)")
     # model
     p.add_argument("--model_checkpoint", required=True)
     p.add_argument("--depth", type=int, default=18)
@@ -576,82 +345,59 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num_classes", type=int, default=200)
     p.add_argument("--subspaces_json", default="")
     p.add_argument("--use_bn_qcw", action="store_true")
-
     # data
-    p.add_argument("--concept_dir", default="")
+    p.add_argument("--concept_dir", required=True)
     p.add_argument("--hl_concepts", default="")
     p.add_argument("--bboxes_file", default="")
-    p.add_argument("--image_state", default="crop", choices=["crop", "redact", "none"])
-
-    # run switches
+    p.add_argument("--image_state", default="crop", choices=["crop","redact","none"])
+    # run
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--run_purity", action="store_true")
-    p.add_argument("--subspace_purity", action="store_true")
     p.add_argument("--topk_images", action="store_true")
     p.add_argument("--k", type=int, default=10)
     p.add_argument("--save_transformed", action="store_true")
-    p.add_argument("--auc_max", action="store_true",
-                   help="also compute AUC_max_global / AUC_max_hl / delta_max")
-    p.add_argument("--energy_ratio", action="store_true",
-                   help="compute EnergyRatio (= slice-energy / global-energy)")
-
+    p.add_argument("--auc_max", action="store_true")      # Δ_max metric
+    p.add_argument("--energy_ratio", action="store_true") # energy metric
+    p.add_argument("--verbose", action="store_true")
     # out
     p.add_argument("--output_dir", default="qcw_plots")
-
     return p.parse_args()
 
-
-# -----------------------------------------------------------------------------
-# main
-# -----------------------------------------------------------------------------
-
-def main() -> None:
-    args = parse_args()
-    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+# -----------------------------------------------------------------------------#
+# Main
+# -----------------------------------------------------------------------------#
+def main():
+    args = get_args()
+    logging.basicConfig(level=logging.INFO, format=LOGFMT)
 
     if args.use_bn_qcw:
-        global build_resnet_qcw, get_last_qcw_layer  # type: ignore[global‑statement]
-        from MODELS.model_resnet_qcw_bn import (
-            build_resnet_qcw as bn_build,
-            get_last_qcw_layer as bn_last,
-        )
+        global build_resnet_qcw, get_last_qcw_layer
+        from MODELS.model_resnet_qcw_bn import build_resnet_qcw as B, get_last_qcw_layer as L
+        build_resnet_qcw, get_last_qcw_layer = B, L
 
-        build_resnet_qcw, get_last_qcw_layer = bn_build, bn_last  # type: ignore[misc‑assignment]
-
-    wl = [int(x) for x in args.whitened_layers.split(",") if x.strip()] if args.whitened_layers else []
+    wl = [int(x) for x in args.whitened_layers.split(",") if x.strip()]
     subspaces = json.load(open(args.subspaces_json)) if args.subspaces_json and os.path.isfile(args.subspaces_json) else None
 
-    model = build_model(
-        args.model_checkpoint,
-        depth=args.depth,
-        whitened=wl,
-        act_mode=args.act_mode,
-        subspaces=subspaces,
-        num_classes=args.num_classes,
-    )
+    model = build_model(args.model_checkpoint, args.depth, wl, args.act_mode,
+                        subspaces, args.num_classes)
 
-    if not args.concept_dir or not os.path.isdir(args.concept_dir):
-        logging.error("concept_dir missing / not a folder → nothing to do")
-        return
+    hl_list = [s.strip() for s in args.hl_concepts.split(",") if s.strip()]
+    bboxes  = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
+    ds      = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
 
-    hl_list = [x.strip() for x in args.hl_concepts.split(",") if x.strip()]
-    bboxes = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
-    ds = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
-
-    analyzer = PurityAnalyzer(model, ds, batch_size=args.batch_size, 
-                      output_dir=args.output_dir, cfg=args)
+    analyzer = PurityAnalyzer(model, ds, bs=args.batch_size,
+                              out_dir=args.output_dir, cfg=args)
 
     if args.run_purity:
-        info = analyzer.compute(subspace_eval=args.subspace_purity)
+        info = analyzer.compute()
         bar_plot(info, os.path.join(args.output_dir, "concept_purity.png"))
+        hierarchy_plot(info, os.path.join(args.output_dir, "hierarchy_metrics.png"), show_delta   = args.auc_max, show_energy  = args.energy_ratio)
 
     if args.topk_images:
-        extractor = TopKImageExtractor(analyzer.acts, analyzer.labels, ds,
-                                       os.path.join(args.output_dir, "topk_concept_images"), model if args.save_transformed else None)
-        extractor.dump(k=args.k, save_transformed=args.save_transformed)
-
-    logging.info("[Done] QCW concept analysis complete.")
-
+        TopKExtractor(analyzer.acts, analyzer.y, ds,
+                      os.path.join(args.output_dir, "topk_concept_images"),
+                      model if args.save_transformed else None
+                     ).dump(k=args.k, save_transformed=args.save_transformed)
 
 if __name__ == "__main__":
     main()
