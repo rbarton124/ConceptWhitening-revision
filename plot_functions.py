@@ -1,470 +1,657 @@
-import os
+from __future__ import annotations
+
 import argparse
 import json
-import numpy as np
-import torch
-import torch.nn as nn
-import torchvision.transforms as transforms
-from torch.utils.data import DataLoader
-from tqdm import tqdm
+import logging
+import math
+import os
 import shutil
 from types import SimpleNamespace
+from typing import Dict, List, Sequence
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torchvision.transforms as T
 from sklearn.metrics import roc_auc_score
+from termcolor import cprint
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
+# Reduce console noise
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+torch.set_printoptions(sci_mode=False)
+
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
-# Model loading stuff
-def resume_checkpoint(model, checkpoint_path):
-    """Load weights from checkpoint, handling key renaming"""
+TOPK: int = 5  # how many axes to show in diagnostics
+LOG_FORMAT = "%(levelname)s | %(asctime)s | %(message)s"
+
+def resume_checkpoint(model: nn.Module, checkpoint_path: str) -> nn.Module:
+    """Load *any* QCW/BYOL/SimCLR checkpoint, coping with DataParallel prefixes."""
     if not checkpoint_path or not os.path.isfile(checkpoint_path):
-        print(f"[Checkpoint] No checkpoint found at {checkpoint_path}")
+        logging.warning("[Checkpoint] No checkpoint at %s", checkpoint_path)
         return model
 
-    print(f"[Checkpoint] Resuming from {checkpoint_path}")
+    logging.info("[Checkpoint] Loading weights from %s", checkpoint_path)
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     raw_sd = ckpt.get("state_dict", ckpt)
     model_sd = model.state_dict()
-    renamed_sd = {}
+    clean_sd: Dict[str, torch.Tensor] = {}
 
-    def rename_key(old_key):
-        # remove common prefixes
-        if old_key.startswith("module."):
-            old_key = old_key[7:]
-        if old_key.startswith("model."):
-            old_key = old_key[6:]
-        # add backbone prefix if needed
-        if not old_key.startswith("backbone.") and ("backbone." + old_key in model_sd):
-            return "backbone." + old_key
-        if old_key.startswith("fc.") and ("backbone.fc" + old_key[2:] in model_sd):
-            return "backbone." + old_key
-        return old_key
+    def _rename(k: str) -> str:
+        if k.startswith("module."):
+            k = k[7:]
+        if k.startswith("model."):
+            k = k[6:]
+        if not k.startswith("backbone.") and f"backbone.{k}" in model_sd:
+            return f"backbone.{k}"
+        if k.startswith("fc.") and f"backbone.{k}" in model_sd:
+            return f"backbone.{k}"
+        return k
 
-    matched_keys, skipped_keys = [], []
     for ckpt_k, ckpt_v in raw_sd.items():
-        new_k = rename_key(ckpt_k)
+        new_k = _rename(ckpt_k)
         if new_k in model_sd and ckpt_v.shape == model_sd[new_k].shape:
-            renamed_sd[new_k] = ckpt_v
-            matched_keys.append(f"{ckpt_k} -> {new_k}")
-        else:
-            skipped_keys.append(f"{ckpt_k}")
+            clean_sd[new_k] = ckpt_v
 
-    print("Loading model...")
-    result = model.load_state_dict(renamed_sd, strict=False)
-    print("Missing keys:", result.missing_keys)
-    print("Unexpected keys:", result.unexpected_keys)
-    print("[Checkpoint] Skipped keys:", skipped_keys)
-
+    missing, unexpected = model.load_state_dict(clean_sd, strict=False)
+    if missing:
+        logging.debug("Missing keys: %s", missing)
+    if unexpected:
+        logging.debug("Unexpected keys: %s", unexpected)
     return model
 
 
-def load_qcw_model(
-    checkpoint_path: str,
-    depth: int = 18,
-    whitened_layers: list[int] = None,
-    act_mode: str = "pool_max",
-    subspaces=None,
-    num_classes: int = 200,
-):
-    """Build a QCW model, load checkpoint, wrap in DataParallel"""
-    if whitened_layers is None:
-        whitened_layers = []
-    model = build_resnet_qcw(
-        num_classes=num_classes,
-        depth=depth,
-        whitened_layers=whitened_layers,
-        act_mode=act_mode,
-        subspaces=subspaces
+def build_model(ckpt: str, depth: int, whitened: List[int], act_mode: str,
+                subspaces: dict | None, num_classes: int) -> nn.Module:
+    model = build_resnet_qcw(num_classes=num_classes,
+                             depth=depth,
+                             whitened_layers=whitened,
+                             act_mode=act_mode,
+                             subspaces=subspaces)
+    model = resume_checkpoint(model, ckpt)
+    model = nn.DataParallel(model).cuda().eval()
+    return model
+
+
+def build_dataset(root: str, hl_filter: Sequence[str], bboxes: str,
+                  crop_mode: str) -> ConceptDataset:
+    tfm = T.Compose([
+        T.RandomResizedCrop(224),
+        T.RandomHorizontalFlip(),
+        T.ToTensor(),
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    ])
+    return ConceptDataset(
+        root_dir=os.path.join(root, "concept_val"),
+        bboxes_file=bboxes,
+        high_level_filter=list(hl_filter),
+        transform=tfm,
+        crop_mode=crop_mode,
     )
-    model = resume_checkpoint(model, checkpoint_path)
-    model = nn.DataParallel(model).cuda()
-    model.eval()
-    return model
 
 
-# Concept purity analysis
-def compute_concept_purity_info(
-    model: nn.Module,
-    concept_dataset: ConceptDataset,
-    batch_size: int = 64,
-    device: str = "cuda"
-):
-    """Get axis activations and compute AUCs for each concept/subconcept"""
-    sc_names = concept_dataset.get_subconcept_names()
-    num_concepts = len(sc_names)
+class HookRunner:
+    """Context‑manager to grab activations from the final QCW layer."""
 
-    # split labeled and free concepts
-    labeled_idxs, free_idxs = [], []
-    for i, nm in enumerate(sc_names):
-        if concept_dataset.is_free_subconcept_name(nm):
-            free_idxs.append(i)
-        else:
-            labeled_idxs.append(i)
-    labeled_set = set(labeled_idxs)
+    def __init__(self, model: nn.Module, num_concepts: int):
+        self.storage = SimpleNamespace(out=None)
+        layer = get_last_qcw_layer(model.module if isinstance(model, nn.DataParallel) else model)
 
-    # hook into the last CW layer
-    hook_storage = SimpleNamespace(output=None)
-    last_cw = get_last_qcw_layer(model.module)
+        def _hook(_, __, output):
+            with torch.no_grad():
+                self.storage.out = output.mean(dim=(2, 3))[:, :num_concepts].cpu()
 
-    def hook_fn(module, inp, out):
-        with torch.no_grad():
-            feat_avg = out.mean(dim=(2, 3))[:, :num_concepts]
-            hook_storage.output = feat_avg.cpu()
+        self.handle = layer.register_forward_hook(_hook)
+        self.model = model
 
-    handle = last_cw.register_forward_hook(hook_fn)
-    loader = DataLoader(concept_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
+    def run_loader(self, loader: DataLoader, device: str = "cuda") -> tuple[np.ndarray, np.ndarray]:
+        acts: List[np.ndarray] = []
+        labels: List[np.ndarray] = []
+        for imgs, sc_lbl, _ in tqdm(loader, desc="Collecting feats"):
+            imgs = imgs.to(device)
+            self.storage.out = None
+            _ = self.model(imgs)
+            if self.storage.out is None:
+                continue  # Skip if hook didn't fire (can happen in very old PyTorch versions)
+            acts.append(self.storage.out.numpy())
+            labels.append(sc_lbl.numpy())
+        return np.concatenate(acts, 0), np.concatenate(labels, 0)
 
-    all_acts, all_labels = [], []
-    for imgs, sc_label, _ in tqdm(loader, desc="[Purity] Gathering feats"):
-        imgs = imgs.to(device)
-        hook_storage.output = None
-        _ = model(imgs)
-        all_acts.append(hook_storage.output.numpy())
-        all_labels.append(sc_label.numpy())
+    def close(self):
+        self.handle.remove()
 
-    handle.remove()
-    all_acts = np.concatenate(all_acts, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
 
-    def roc_for_axis(pos_mask, axis_idx):
-        # skip if all positive or all negative samples
-        if pos_mask.sum() == 0 or pos_mask.sum() == len(pos_mask):
+# -----------------------------------------------------------------------------
+# Analysis classes
+# -----------------------------------------------------------------------------
+
+class PurityAnalyzer:
+    """Compute (sub‑)concept purity, diagnostics, and CSV."""
+
+    def __init__(self, model: nn.Module, ds: ConceptDataset, *,
+                 batch_size: int = 64, device: str = "cuda", topk: int = TOPK,
+                 output_dir: str = "qcw_plots",
+                 cfg: argparse.Namespace | None = None):
+        self.ds = ds
+        self.model = model
+        self.bs = batch_size
+        self.device = device
+        self.topk = topk
+        self.output_dir = output_dir
+        self.sc_names = ds.get_subconcept_names()
+        self.num_concepts = len(self.sc_names)
+        self._collect()  # fills self.acts / self.labels
+
+        # Maps for hierarchy
+        self.subspace_map = ds.subspace_mapping  # HL → list[int]
+        self.sc_to_hl = ds.get_subconcept_to_hl_name_mapping()  # idx → HL
+        self.axis_to_hl = {idx: hl for idx, hl in self.sc_to_hl.items()}
+
+        # Pre‑split
+        self.labeled, self.free = [], []
+        for i, nm in enumerate(self.sc_names):
+            (self.free if ds.is_free_subconcept_name(nm) else self.labeled).append(i)
+        self.labeled_set = set(self.labeled)
+        
+        # keep full CLI so we know which extras to compute
+        self.cfg = cfg or SimpleNamespace(auc_max=False, energy_ratio=False)
+
+        # ---------------- internal helpers ----------------
+
+    def _collect(self) -> None:
+        loader = DataLoader(self.ds, batch_size=self.bs, shuffle=False, pin_memory=True)
+        runner = HookRunner(self.model, self.num_concepts)
+        self.acts, self.labels = runner.run_loader(loader, self.device)
+        runner.close()
+
+    def _roc_auc(self, mask: np.ndarray,
+               axis: int | None = None,
+               custom: np.ndarray | None = None) -> float:
+        """If `custom` is given use that (shape [N]), else self.acts[:, axis]."""
+        scores = custom if custom is not None else self.acts[:, axis]
+        if mask.sum() in {0, len(mask)}:
             return float("nan")
-        return roc_auc_score(pos_mask.astype(int), all_acts[:, axis_idx])
+        return roc_auc_score(mask.astype(int), scores)
 
-    info_dict = {}
+    # ---------------- public API ----------------
 
-    # for labeled concepts, use matching axis
-    for c_idx in labeled_idxs:
-        scn = sc_names[c_idx]
-        mask = (all_labels == c_idx)
-        val = roc_for_axis(mask, c_idx)
-        info_dict[scn] = {
-            "is_free": False,
-            "label_auc": val,
-            "best_axis_auc": val,
-            "best_axis_idx": c_idx,
-            "best_axis_is_labeled": True,
-            "unlabeled_axis_auc": None,
-            "unlabeled_axis_idx": None
-        }
+    def compute(self, subspace_eval: bool = False) -> Dict[str, dict]:
+        info: Dict[str, dict] = {}
+        rows: List[dict] = []
 
-    # for free concepts, find best activating axis
-    for fc_idx in free_idxs:
-        scn = sc_names[fc_idx]
-        mask = (all_labels == fc_idx)
-        if not mask.any():
-            info_dict[scn] = {
-                "is_free": True,
-                "label_auc": None,
-                "best_axis_auc": float("nan"),
-                "best_axis_idx": -1,
-                "best_axis_is_labeled": False,
-                "unlabeled_axis_auc": None,
-                "unlabeled_axis_idx": None
+        # Pre-compute global max scores since they're the same for all concepts
+        if self.cfg.auc_max:
+            global_max_scores = self.acts.max(1)
+        else:
+            global_max_scores = None
+            
+        for idx in range(self.num_concepts):
+            name = self.sc_names[idx]
+            hl = self.sc_to_hl[idx]
+            hl_axes = self.subspace_map[hl]
+            mask = self.labels == idx
+            
+            # Guard against empty positive set
+            if not mask.any():
+                # Create a dictionary with nan for all numerical values
+                info[name] = {
+                    "is_free": idx in self.free,
+                    "label_auc": float("nan"),
+                    "best_axis_auc": float("nan"),
+                    "best_axis_idx": -1,
+                    "best_axis_is_labeled": None,
+                    "unlabeled_axis_auc": None,
+                    "unlabeled_axis_idx": None,
+                    "auc_max_global": float("nan"),
+                    "auc_max_hl": float("nan"),
+                    "delta_max": float("nan"),
+                    "energy_ratio": float("nan"),
+                }
+                rows.append({
+                    "sc_name": name,
+                    "hl_name": hl,
+                    "is_free": idx in self.free,
+                    "slice_axes": " ".join(map(str, hl_axes)),
+                    "best_ax_global": -1,
+                    "auc_global": float("nan"),
+                    "best_ax_hl": -1,
+                    "auc_hl": float("nan"),
+                    "mass_global": float("nan"),
+                    "mass_hl": float("nan"),
+                    "mass_retained_pct": float("nan"),
+                    "topk_global": "",
+                    "auc_max_global": float("nan"),
+                    "auc_max_hl": float("nan"),
+                    "delta_max": float("nan"),
+                    "energy_ratio": float("nan"),
+                })
+                continue
+                
+            sub_acts = self.acts[mask]
+            mean_acts = sub_acts.mean(0)
+
+            # ----------------------------------------------------------------
+            # NEW - hierarchy-aware metrics that do NOT rely on single axis
+            # ----------------------------------------------------------------
+            # Compute HL-max scores for this concept's HL (can't be precomputed globally)
+            if self.cfg.auc_max:
+                hl_max_scores = self.acts[:, hl_axes].max(1)
+                auc_max_global = self._roc_auc(mask, custom=global_max_scores)
+                auc_max_hl = self._roc_auc(mask, custom=hl_max_scores)
+                delta_max = auc_max_global - auc_max_hl
+            else:
+                auc_max_global = auc_max_hl = delta_max = None
+
+            if self.cfg.energy_ratio:
+                # energy for positive samples only
+                g_energy = np.linalg.norm(self.acts[mask], axis=1).mean()
+                h_energy = np.linalg.norm(self.acts[mask][:, hl_axes], axis=1).mean()
+                energy_ratio = h_energy / (g_energy + 1e-9)
+            else:
+                energy_ratio = None
+
+            # ---------- NEW LOGIC -------------------------------------------------
+            # 1) global and HL-local maxima (same as before)
+            best_g = int(mean_acts.argmax())
+            auc_g = self._roc_auc(mask, best_g)
+
+            hl_means = mean_acts[hl_axes]
+            best_hl = hl_axes[int(hl_means.argmax())]
+            auc_hl = self._roc_auc(mask, best_hl)
+
+            # 2) choose PRIMARY axis & SECONDARY (diagnostic) axis
+            # -----------------------------------------------------
+            if idx in self.free:
+                # -- Candidate pool = unlabeled axes ---------------
+                unlabeled_axes = [a for a in range(self.num_concepts)
+                                  if a not in self.labeled_set]
+                if not unlabeled_axes:
+                    # degenerate case – fall back to best_hl
+                    primary_ax = best_hl
+                else:
+                    ul_means = mean_acts[unlabeled_axes]
+                    primary_ax = unlabeled_axes[int(ul_means.argmax())]
+
+                primary_auc = self._roc_auc(mask, primary_ax)
+
+                # SECONDARY axis = best overall *if* it beats primary
+                if mean_acts[best_g] > mean_acts[primary_ax] + 1e-6:
+                    secondary_ax = best_g
+                    secondary_auc = auc_g
+                else:
+                    secondary_ax = None
+                    secondary_auc = None
+            else:
+                # ----- LABELLED CONCEPT -------------------------------------------
+                primary_ax = idx
+                primary_auc = self._roc_auc(mask, idx)
+                secondary_ax = None
+                secondary_auc = None
+
+            # Decide which axis drives the classic single-axis purity plot
+            use_axis = primary_ax if not subspace_eval else (
+                primary_ax if (primary_ax in hl_axes) else best_hl)
+            use_auc = self._roc_auc(mask, use_axis)
+
+            is_lbl = use_axis in self.labeled_set
+            unl_auc = unl_idx = None
+            # (We keep unl_* keys for backward compatibility but they now mean
+            #  "secondary" rather than "unlabeled fallback".)
+            if secondary_ax is not None:
+                unl_idx, unl_auc = secondary_ax, secondary_auc
+
+            info[name] = {
+                "is_free": idx in self.free,
+                "label_auc": None if idx in self.free else use_auc,
+                "best_axis_auc": use_auc,
+                "best_axis_idx": use_axis,
+                "best_axis_is_labeled": is_lbl,
+                "unlabeled_axis_auc": unl_auc,
+                "unlabeled_axis_idx": unl_idx,
+                # NEW hierarchy metrics
+                "auc_max_global": auc_max_global,
+                "auc_max_hl":     auc_max_hl,
+                "delta_max":      delta_max,
+                "energy_ratio":   energy_ratio,
+                # NEW explicit names to avoid confusion
+                "primary_axis_idx":    primary_ax,
+                "primary_axis_auc":    primary_auc,
+                "secondary_axis_idx":  secondary_ax,
+                "secondary_axis_auc":  secondary_auc,
             }
-            continue
-        sub_acts = all_acts[mask]
-        mean_acts = sub_acts.mean(axis=0)
-        best_ax = int(np.argmax(mean_acts))
-        best_auc = roc_for_axis(mask, best_ax)
-        is_lbl = (best_ax in labeled_set)
 
-        unl_auc, unl_idx = None, None
-        if is_lbl:
-            # If best axis is labeled, attempt a fallback axis
-            sorted_ax = np.argsort(mean_acts)[::-1]
-            for cand in sorted_ax:
-                if cand not in labeled_set:
-                    unl_idx = cand
-                    unl_auc = roc_for_axis(mask, cand)
-                    break
+            # ---- diagnostics block ----
+            rows.append(self._diagnostic_row(name, hl, idx in self.free, hl_axes,
+                                             mean_acts, mask, best_g, auc_g, best_hl, auc_hl,
+                                             auc_max_global, auc_max_hl, delta_max, energy_ratio))
 
-        info_dict[scn] = {
-            "is_free": True,
-            "label_auc": None,
-            "best_axis_auc": best_auc,
-            "best_axis_idx": best_ax,
-            "best_axis_is_labeled": is_lbl,
-            "unlabeled_axis_auc": unl_auc,
-            "unlabeled_axis_idx": unl_idx
+        self._save_csv(rows)
+        return info
+
+    # ---------------- diagnostics / csv ----------------
+
+    def _diagnostic_row(self, scn: str, hl: str, is_free: bool, hl_axes: List[int],
+                     mean_acts: np.ndarray, mask: np.ndarray,
+                     best_g: int, auc_g: float, best_hl: int, auc_hl: float,
+                     auc_max_global=None, auc_max_hl=None, delta_max=None, energy_ratio=None) -> dict:
+        sub_acts = self.acts[mask]
+        mass_g = float(np.abs(sub_acts).mean())
+        mass_h = float(np.abs(sub_acts[:, hl_axes]).mean())
+        pct = 100 * mass_h / (mass_g + 1e-9)
+
+        # pretty console block (only for one concept to avoid spam)
+        if self.device == "cuda" and len(getattr(self, "_printed", set())) < 1:  # type: ignore[attr-defined]
+            self._printed = getattr(self, "_printed", set())  # type: ignore[attr-defined]
+            if scn not in self._printed:
+                self._printed.add(scn)
+                top_ids = mean_acts.argsort()[::-1][: self.topk]
+                top_vals = mean_acts[top_ids]
+                top_hls = [self.axis_to_hl[a] for a in top_ids]
+                off_slice = [a for a in top_ids if a not in hl_axes]
+                print("\n[Diagnostic] Sample analysis:")
+                print(f"Subconcept: {scn} (HL: {hl})")
+                print(f"  Top-{self.topk} axes: {list(top_ids)}")
+                print(f"  Top-{self.topk} values: {[f'{v:.3f}' for v in top_vals]}")
+                print(f"  Top-{self.topk} HLs: {top_hls}")
+                print(f"  Axes in this HL: {hl_axes}")
+                print(f"  Axes outside HL: {off_slice}")
+                if off_slice:
+                    cprint(f"  ⚠️  Found {len(off_slice)} top-{self.topk} axes outside this concept's HL space", "red")
+                print(f"Total activation before masking: {mass_g:,.2f}")
+                print(f"Total activation after masking:  {mass_h:,.2f}")
+                print(f"Percentage retained: {pct:.2f}%")
+                if pct > 95:
+                    cprint("⚠️  WARNING: Almost 100% of activation retained after masking.", "red")
+                
+                # Optional readout of new metrics
+                if self.cfg.auc_max and delta_max is not None:
+                    print(f"Δ_max (leakage gap): {delta_max:.3f} "
+                          f"[global {auc_max_global:.3f} vs HL {auc_max_hl:.3f}]")
+                if self.cfg.energy_ratio and energy_ratio is not None:
+                    print(f"Energy ratio inside slice: {energy_ratio:.3f}")
+
+        return {
+            "sc_name": scn,
+            "hl_name": hl,
+            "is_free": is_free,
+            "slice_axes": " ".join(map(str, hl_axes)),
+            "best_ax_global": best_g,
+            "auc_global": auc_g,
+            "best_ax_hl": best_hl,
+            "auc_hl": auc_hl,
+            "mass_global": mass_g,
+            "mass_hl": mass_h,
+            "mass_retained_pct": pct,
+            "topk_global": " ".join(
+                f"{a}:{mean_acts[a]:.3f}" for a in mean_acts.argsort()[::-1][: self.topk]
+            ),
+            "auc_max_global": auc_max_global,
+            "auc_max_hl":     auc_max_hl,
+            "delta_max":      delta_max,
+            "energy_ratio":   energy_ratio,
         }
 
-    return info_dict
+    def _save_csv(self, rows: List[dict]) -> None:
+        os.makedirs(self.output_dir, exist_ok=True)
+        path = os.path.join(self.output_dir, "result.csv")
+        pd.DataFrame(rows).to_csv(path, index=False)
+        logging.info("[CSV] Diagnostics → %s", path)
 
 
-def plot_concept_purity(
-    concept_info: dict,
-    out_path: str = "concept_purity.png"
-):
-    """Plot bar chart showing concept purity - red=labeled axes, blue=unlabeled"""
+class TopKImageExtractor:
+    """Dump images that maximally activate chosen axes (re‑uses cached activations)."""
+
+    def __init__(self, acts: np.ndarray, labels: np.ndarray, ds: ConceptDataset,
+                 out_dir: str, model: nn.Module | None = None):
+        self.acts, self.labels, self.ds = acts, labels, ds
+        self.out_dir = out_dir
+        self.model = model  # only needed if saving transformed
+
+    def dump(self, k: int = 10, save_transformed: bool = False,
+             mean: List[float] | None = None, std: List[float] | None = None,
+             device: str = "cuda") -> None:
+        from torchvision.utils import save_image  # Import once at the method level
+        mean = mean or [0.485, 0.456, 0.406]
+        std = std or [0.229, 0.224, 0.225]
+        sc_names = self.ds.get_subconcept_names()
+        sc_count = len(sc_names)
+        labeled = [i for i, n in enumerate(sc_names) if not self.ds.is_free_subconcept_name(n)]
+        labeled_set = set(labeled)
+
+        # helpers
+        def _best_unlabeled_axis(fc_idx: int) -> int | None:
+            mask = self.labels == fc_idx
+            if not mask.any():
+                return None
+            means = self.acts[mask].mean(0)
+            for ax in means.argsort()[::-1]:
+                if ax not in labeled_set:
+                    return int(ax)
+            return None
+
+        def _unnorm(t: torch.Tensor) -> torch.Tensor:
+            m = torch.tensor(mean, dtype=t.dtype, device=t.device)[:, None, None]
+            s = torch.tensor(std, dtype=t.dtype, device=t.device)[:, None, None]
+            return t.mul(s).add(m).clamp(0, 1)
+
+        os.makedirs(self.out_dir, exist_ok=True)
+        if save_transformed:
+            # need images – re‑load via DataLoader once
+            logging.info("[Top‑K] Re‑loading images for saving …")
+            loader = DataLoader(self.ds, batch_size=64, shuffle=False, pin_memory=True)
+            imgs_all: List[torch.Tensor] = []
+            for imgs, _, _ in tqdm(loader):
+                imgs_all.append(imgs)
+            imgs_all = torch.cat(imgs_all, 0)
+
+        for idx, scn in enumerate(sc_names):
+            axis = idx if idx in labeled_set else _best_unlabeled_axis(idx)
+            if axis is None:
+                continue
+            scores = self.acts[:, axis]
+            top_idx = scores.argsort()[::-1][:k]
+            sc_dir = os.path.join(self.out_dir, scn.replace("/", "_"))
+            os.makedirs(sc_dir, exist_ok=True)
+            for rank, data_idx in enumerate(top_idx):
+                dst = os.path.join(sc_dir, f"rank_{rank + 1}.jpg")
+                if save_transformed:
+                    save_image(_unnorm(imgs_all[data_idx].cpu()), dst)
+                else:
+                    src_path = self.ds.samples[data_idx][0]  # Get image path from samples
+                    shutil.copy2(src_path, dst)
+        logging.info("[Top‑K] Images dumped → %s", self.out_dir)
+
+
+# -----------------------------------------------------------------------------
+# Plotting helpers
+# -----------------------------------------------------------------------------
+
+def bar_plot(concept_info: Dict[str, dict], out_path: str) -> None:
+    """
+    Re-implement the original "dual-bar" purity figure.
+
+    ─ red  = axis is labelled (primary for labeled concepts, secondary when labeled axis leaks)
+    ─ blue = axis is unlabelled (primary for free concepts)
+    """
     import math
     import matplotlib.patches as mpatches
 
-    data_list = sorted(
+    # --- sort by primary-AUC descending (same rule as before) -----------------
+    ordered = sorted(
         concept_info.items(),
-        key=lambda x: x[1]["best_axis_auc"] if not math.isnan(x[1]["best_axis_auc"]) else -999,
-        reverse=True
+        key=lambda kv: kv[1]["best_axis_auc"]
+        if not math.isnan(kv[1]["best_axis_auc"])
+        else -999,
+        reverse=True,
     )
 
     plt.figure(figsize=(12, 6))
-    main_width, second_width = 0.5, 0.3
+    MAIN_W, Fallback_W = 0.5, 0.3   # identical to legacy
+    x_positions = list(range(len(ordered)))
 
-    def axis_color(is_labeled):
-        return "red" if is_labeled else "blue"
+    def _color(is_lbl: bool) -> str:
+        return "red" if is_lbl else "blue"
 
-    for i, (scn, info) in enumerate(data_list):
-        # Potentially 2 bars: best + unlabeled fallback
-        bar_specs = []
-        best_val = info["best_axis_auc"]
-        best_idx = info["best_axis_idx"]
-        best_is_lbl = info["best_axis_is_labeled"]
-        unl_val = info["unlabeled_axis_auc"]
-        unl_idx = info["unlabeled_axis_idx"]
+    # -------------------------------------------------------------------------
+    for i, (sc_name, info) in enumerate(ordered):
+        primary_auc = info["best_axis_auc"]
+        primary_idx = info["best_axis_idx"]
+        primary_is_labeled = info["best_axis_is_labeled"]
+        primary_color = _color(primary_is_labeled)
+        
+        # 1. For free concepts with both bars, draw primary and secondary with offset
+        if info["is_free"] and info["unlabeled_axis_auc"] is not None:
+            secondary_auc = info["unlabeled_axis_auc"]
+            secondary_idx = info["unlabeled_axis_idx"]
+            
+            # Important: For free concepts, always draw unlabeled primary bar on left,
+            # labeled secondary bar on right with different width and higher z-order
+            # Primary bar (unlabeled, blue)
+            if not math.isnan(primary_auc):
+                plt.bar(i - 0.05, primary_auc, width=MAIN_W, color="blue", zorder=2)
+                plt.text(
+                    i - 0.05,
+                    primary_auc + 0.01,
+                    f"Ax {primary_idx} ({primary_auc:.2f})",
+                    ha="center", va="bottom", fontsize=8, zorder=3
+                )
+                
+            # Secondary bar (labeled, red, always on top and narrower)
+            if secondary_auc is not None and not math.isnan(secondary_auc):
+                plt.bar(i + 0.12, secondary_auc, width=0.25, color="red", zorder=5) 
+                plt.text(
+                    i + 0.12,
+                    secondary_auc + 0.01,
+                    f"Ax {secondary_idx} ({secondary_auc:.2f})",
+                    ha="center", va="bottom", fontsize=8, zorder=6
+                )
+        else:
+            # Single bar case (labeled concept)
+            if not math.isnan(primary_auc):
+                plt.bar(i, primary_auc, width=MAIN_W, color=primary_color, zorder=2)
+                plt.text(
+                    i,
+                    primary_auc + 0.01,
+                    f"Ax {primary_idx} ({primary_auc:.2f})",
+                    ha="center", va="bottom", fontsize=8, zorder=3
+                )
 
-        if not math.isnan(best_val):
-            bar_specs.append((best_val, best_idx, best_is_lbl, 0.0))
-        if unl_val is not None and not math.isnan(unl_val):
-            bar_specs.append((unl_val, unl_idx, False, 0.08))
-
-        # Sort so we draw larger bar first
-        bar_specs.sort(key=lambda b: b[0], reverse=True)
-
-        for idxB, (height, axisid, is_lbl, x_offset) in enumerate(bar_specs):
-            plt.bar(i + x_offset, height,
-                    width=(main_width if idxB == 0 else second_width),
-                    color=axis_color(is_lbl), zorder=2)
-
-            label_txt = f"Ax {axisid} ({height:.2f})"
-            plt.text(i + x_offset + (0.05 if idxB == 1 else 0),
-                     height + 0.01,
-                     label_txt,
-                     ha="center", va="bottom", fontsize=8, zorder=3)
-
-    plt.xticks(range(len(data_list)), [x[0] for x in data_list], rotation=45, ha="right")
+    # --- cosmetics -----------------------------------------------------------
+    plt.xticks(x_positions, [n for n, _ in ordered], rotation=45, ha="right")
     plt.ylabel("AUC (Concept Purity)")
     plt.title("Concept Purity")
     plt.ylim(0, 1)
     plt.tight_layout()
 
-    # Legend
-    labeled_patch = mpatches.Patch(color="red", label="Labeled Axis")
-    unlabeled_patch = mpatches.Patch(color="blue", label="Unlabeled Axis")
-    plt.legend(handles=[labeled_patch, unlabeled_patch], loc="upper right")
+    plt.legend(
+        handles=[
+            mpatches.Patch(color="red", label="Labeled Axis"),
+            mpatches.Patch(color="blue", label="Unlabeled Axis"),
+        ],
+        loc="upper right",
+    )
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     plt.savefig(out_path, dpi=120)
     plt.close()
-    print(f"[Info] Saved concept purity chart => {out_path}")
-
-# Top images per concept
-def plot_topk_images_for_concept_axes(
-    model: nn.Module,
-    concept_dataset: ConceptDataset,
-    k: int = 10,
-    output_dir: str = "./topk_concept_images",
-    batch_size: int = 64,
-    device: str = "cuda",
-    save_transformed: bool = False,
-    unnorm_mean: list[float] = None,
-    unnorm_std: list[float] = None
-):
-    """Save images that most activate each concept axis"""
-    if unnorm_mean is None:
-        unnorm_mean = [0.485, 0.456, 0.406]
-    if unnorm_std is None:
-        unnorm_std = [0.229, 0.224, 0.225]
-
-    sc_names = concept_dataset.get_subconcept_names()
-    sc_count = len(sc_names)
-    labeled_idxs, free_idxs = [], []
-
-    for i, scn in enumerate(sc_names):
-        if concept_dataset.is_free_subconcept_name(scn):
-            free_idxs.append(i)
-        else:
-            labeled_idxs.append(i)
-    labeled_set = set(labeled_idxs)
-
-    # hook into final layer
-    hook_storage = SimpleNamespace(output=None)
-    last_cw = get_last_qcw_layer(model.module)
-
-    def hook_fn(module, inp, out):
-        with torch.no_grad():
-            feat_avg = out.mean(dim=(2,3))[:, :sc_count]
-            hook_storage.output = feat_avg.cpu()
-
-    h = last_cw.register_forward_hook(hook_fn)
-    loader = DataLoader(concept_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
-
-    all_acts, all_labels = [], []
-    all_imgs = [] if save_transformed else None
-    all_paths = [] if not save_transformed else None
-
-    for imgs, sc_label, paths in tqdm(loader, desc="[TopK] Gathering feats"):
-        imgs = imgs.to(device)
-        hook_storage.output = None
-        _ = model(imgs)
-        all_acts.append(hook_storage.output.numpy())
-        all_labels.append(sc_label.numpy())
-
-        if save_transformed:
-            all_imgs.append(imgs.cpu())
-        else:
-            all_paths.extend(paths)
-
-    h.remove()
-    all_acts = np.concatenate(all_acts, axis=0)
-    all_labels = np.concatenate(all_labels, axis=0)
-
-    def unnormalize_img(t):
-        # unnormalize back to 0-1 range
-        mean_t = torch.tensor(unnorm_mean, dtype=t.dtype).view(-1, 1, 1)
-        std_t  = torch.tensor(unnorm_std, dtype=t.dtype).view(-1, 1, 1)
-        out_t  = t.clone()
-        out_t.mul_(std_t).add_(mean_t).clamp_(0, 1)
-        return out_t
-
-    if save_transformed:
-        import torchvision
-        all_imgs = torch.cat(all_imgs, dim=0)
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    def best_unlabeled_axis(fc_idx):
-        mask = (all_labels == fc_idx)
-        if not mask.any():
-            return None
-        sub_acts = all_acts[mask]
-        mean_acts = sub_acts.mean(axis=0)
-        sorted_ax = np.argsort(mean_acts)[::-1]
-        for ax_ in sorted_ax:
-            if ax_ not in labeled_set:
-                return ax_
-        return None
-
-    def copy_topk_for_axis(axis_idx, sc_name):
-        axis_scores = all_acts[:, axis_idx]
-        sorted_idx = np.argsort(axis_scores)[::-1][:k]
-        sc_dir = os.path.join(output_dir, sc_name.replace("/", "_"))
-        os.makedirs(sc_dir, exist_ok=True)
-        for rank_i, arr_i in enumerate(sorted_idx):
-            dst = os.path.join(sc_dir, f"rank_{rank_i+1}.jpg")
-            if not save_transformed:
-                src = all_paths[arr_i]
-                try:
-                    shutil.copy2(src, dst)
-                except:
-                    pass
-            else:
-                from torchvision.utils import save_image
-                img_tensor = unnormalize_img(all_imgs[arr_i])
-                save_image(img_tensor, dst)
-
-    # process each subconcept
-    for c_idx, sc_name in enumerate(sc_names):
-        sc_dir_name = sc_name.replace("_free", "-free")
-        if c_idx in labeled_idxs:
-            copy_topk_for_axis(c_idx, sc_dir_name)
-        else:
-            axis_ul = best_unlabeled_axis(c_idx)
-            if axis_ul is not None:
-                copy_topk_for_axis(axis_ul, sc_dir_name)
-
-    print(f"[Done] Copied top-{k} images per concept axis => {output_dir}")
+    logging.info("[PNG] Bar-plot saved → %s", out_path)
 
 
-# Main function
-def main():
-    """Run concept purity analysis and extract top images"""
-    parser = argparse.ArgumentParser(description="QCW Plot Functions (Concept-Only Version)")
+# -----------------------------------------------------------------------------
+# CLI
+# -----------------------------------------------------------------------------
 
-    parser.add_argument("--model_checkpoint", required=True, help="Path to model checkpoint.")
-    parser.add_argument("--concept_dir", default="", help="Folder with 'concept_val' subdir containing concept data.")
-    parser.add_argument("--hl_concepts", default="", help="Comma separated high-level concepts for ConceptDataset.")
-    parser.add_argument("--bboxes_file", default="", help="Optional bboxes.json for bounding boxes. Use if not in concept dataset")
-    parser.add_argument("--batch_size", type=int, default=64)
-    parser.add_argument("--depth", type=int, default=18)
-    parser.add_argument("--whitened_layers", type=str, default="5")
-    parser.add_argument("--act_mode", type=str, default="pool_max")
-    parser.add_argument("--num_classes", type=int, default=200)
-    parser.add_argument("--vanilla_pretrain", action="store_true")
-    parser.add_argument("--use_bn_qcw", action="store_true", help="If using BN->QCW with BN version.")
-    parser.add_argument("--image_state", type=str, default="crop", help="(crop|redact|none) for ConceptDataset.")
-    parser.add_argument("--run_purity", action="store_true", help="Compute concept purity & plot.")
-    parser.add_argument("--topk_images", action="store_true", help="Extract top-k images per concept axis.")
-    parser.add_argument("--k", type=int, default=10, help="Number of images to copy per axis.")
-    parser.add_argument("--subspaces_json", default="", help="JSON describing subspaces if needed.")
-    parser.add_argument("--save_transformed", action="store_true", help="If set, save normalized -> unnormalized images.")
-    parser.add_argument("--output_dir", default="qcw_plots", help="Directory for output images/plots.")
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser("QCW concept analyzer (refactored)")
+    # model
+    p.add_argument("--model_checkpoint", required=True)
+    p.add_argument("--depth", type=int, default=18)
+    p.add_argument("--whitened_layers", default="5")
+    p.add_argument("--act_mode", default="pool_max")
+    p.add_argument("--num_classes", type=int, default=200)
+    p.add_argument("--subspaces_json", default="")
+    p.add_argument("--use_bn_qcw", action="store_true")
 
-    args = parser.parse_args()
+    # data
+    p.add_argument("--concept_dir", default="")
+    p.add_argument("--hl_concepts", default="")
+    p.add_argument("--bboxes_file", default="")
+    p.add_argument("--image_state", default="crop", choices=["crop", "redact", "none"])
 
-    # handle BN->QCW alternative
+    # run switches
+    p.add_argument("--batch_size", type=int, default=64)
+    p.add_argument("--run_purity", action="store_true")
+    p.add_argument("--subspace_purity", action="store_true")
+    p.add_argument("--topk_images", action="store_true")
+    p.add_argument("--k", type=int, default=10)
+    p.add_argument("--save_transformed", action="store_true")
+    p.add_argument("--auc_max", action="store_true",
+                   help="also compute AUC_max_global / AUC_max_hl / delta_max")
+    p.add_argument("--energy_ratio", action="store_true",
+                   help="compute EnergyRatio (= slice-energy / global-energy)")
+
+    # out
+    p.add_argument("--output_dir", default="qcw_plots")
+
+    return p.parse_args()
+
+
+# -----------------------------------------------------------------------------
+# main
+# -----------------------------------------------------------------------------
+
+def main() -> None:
+    args = parse_args()
+    logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
     if args.use_bn_qcw:
-        global build_resnet_qcw, get_last_qcw_layer
-        from MODELS.model_resnet_qcw_bn import build_resnet_qcw as bn_build
-        from MODELS.model_resnet_qcw_bn import get_last_qcw_layer as bn_get_last
-        build_resnet_qcw = bn_build
-        get_last_qcw_layer = bn_get_last
-
-    try:
-        wl = [int(x) for x in args.whitened_layers.split(",") if x.strip()]
-    except ValueError:
-        wl = []
-
-    subspaces = None
-    if args.subspaces_json and os.path.isfile(args.subspaces_json):
-        with open(args.subspaces_json) as f:
-            subspaces = json.load(f)
-
-    print("[Info] Loading QCW model...")
-    model = load_qcw_model(
-        checkpoint_path=args.model_checkpoint,
-        depth=args.depth,
-        whitened_layers=wl,
-        act_mode=args.act_mode,
-        subspaces=subspaces,
-        num_classes=args.num_classes
-    )
-
-    # process concept dataset if provided
-    if args.concept_dir and os.path.isdir(args.concept_dir):
-        hl_list = [x.strip() for x in args.hl_concepts.split(",")] if args.hl_concepts else []
-        transform = transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-        ])
-        bboxes = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
-        concept_ds = ConceptDataset(
-            root_dir=os.path.join(args.concept_dir, "concept_val"),
-            bboxes_file=bboxes,
-            high_level_filter=hl_list,
-            transform=transform,
-            crop_mode=args.image_state
+        global build_resnet_qcw, get_last_qcw_layer  # type: ignore[global‑statement]
+        from MODELS.model_resnet_qcw_bn import (
+            build_resnet_qcw as bn_build,
+            get_last_qcw_layer as bn_last,
         )
 
-        # run purity analysis
-        if args.run_purity:
-            info_dict = compute_concept_purity_info(model, concept_ds, batch_size=args.batch_size)
-            out_path = os.path.join(args.output_dir, "concept_purity.png")
-            plot_concept_purity(info_dict, out_path)
+        build_resnet_qcw, get_last_qcw_layer = bn_build, bn_last  # type: ignore[misc‑assignment]
 
-        # extract top activating images
-        if args.topk_images:
-            out_dir = os.path.join(args.output_dir, "topk_concept_images")
-            plot_topk_images_for_concept_axes(
-                model, concept_ds,
-                k=args.k,
-                output_dir=out_dir,
-                batch_size=args.batch_size,
-                save_transformed=args.save_transformed
-            )
+    wl = [int(x) for x in args.whitened_layers.split(",") if x.strip()] if args.whitened_layers else []
+    subspaces = json.load(open(args.subspaces_json)) if args.subspaces_json and os.path.isfile(args.subspaces_json) else None
 
-    print("[Done] QCW concept analysis complete.")
+    model = build_model(
+        args.model_checkpoint,
+        depth=args.depth,
+        whitened=wl,
+        act_mode=args.act_mode,
+        subspaces=subspaces,
+        num_classes=args.num_classes,
+    )
+
+    if not args.concept_dir or not os.path.isdir(args.concept_dir):
+        logging.error("concept_dir missing / not a folder → nothing to do")
+        return
+
+    hl_list = [x.strip() for x in args.hl_concepts.split(",") if x.strip()]
+    bboxes = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
+    ds = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
+
+    analyzer = PurityAnalyzer(model, ds, batch_size=args.batch_size, 
+                      output_dir=args.output_dir, cfg=args)
+
+    if args.run_purity:
+        info = analyzer.compute(subspace_eval=args.subspace_purity)
+        bar_plot(info, os.path.join(args.output_dir, "concept_purity.png"))
+
+    if args.topk_images:
+        extractor = TopKImageExtractor(analyzer.acts, analyzer.labels, ds,
+                                       os.path.join(args.output_dir, "topk_concept_images"), model if args.save_transformed else None)
+        extractor.dump(k=args.k, save_transformed=args.save_transformed)
+
+    logging.info("[Done] QCW concept analysis complete.")
+
 
 if __name__ == "__main__":
     main()

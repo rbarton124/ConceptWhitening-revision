@@ -80,3 +80,5 @@ figures/
 figures_layers/
 histories/
 notes/
+subspace_*/
+runs-newest/
