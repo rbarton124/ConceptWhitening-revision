@@ -64,7 +64,6 @@ parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in
 parser.add_argument("--use_bn_qcw", action="store_true",
                     help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 parser.add_argument("--cw_lambda", type=float, default=0.1, help="Lambda parameter for QCW.")
-parser.add_argument("--mask_concepts", default="", help="Concepts to mask, usually the subconcepts of a hl concept")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
@@ -80,6 +79,10 @@ parser.add_argument("--data_test_dir", help="Optional: path to val/ or test/ set
 parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
 parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
+# Concept masking params
+parser.add_argument("--mask_concepts", default="all_nonpresent", help="Concepts to mask, usually the subconcepts of a hl concept")
+parser.add_argument("--bird_name", default="all", help="name of bird to test concept masking on e.g. Acadian_Flycatcher")
+parser.add_argument("--json_path", default="", help="path to the json file listing all nonpresent concepts of all birds")
 
 args = parser.parse_args()
 
@@ -816,7 +819,7 @@ class AverageMeter:
         self.count+= n
         self.avg = self.sum/self.count if self.count>0 else 0
 
-def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts_to_mask=None):
+def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=None, concepts_to_mask=None):
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
     losses = AverageMeter()
@@ -825,7 +828,7 @@ def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts
 
     # validate concept masking
     if concept_ds and concepts_to_mask:
-        masks = mask_concepts(model, concept_ds, concepts_to_mask)
+        masks = mask_concepts(model, concept_ds, concepts_to_mask, bird_name=args.bird_name, json_path=args.json_path)
         apply_per_layer_activation_masks(model, masks)
     
     # produce alignment metrics if concept masking is applied
@@ -873,15 +876,50 @@ def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts
             print(f"[Error] Failed to process directory {loader}: {e}")
 
     else:
+        # with torch.no_grad():
+        #     for imgs, lbls in loader:
+        #         imgs, lbls = imgs.cuda(), lbls.cuda()
+        #         outs = model(imgs)
+        #         loss = criterion(outs, lbls)
+        #         prec1, prec5 = accuracy_topk(outs, lbls, (1,5))
+        #         losses.update(loss.item(), imgs.size(0))
+        #         top1.update(prec1, imgs.size(0))
+        #         top5.update(prec5, imgs.size(0))
+        # print per-class accuracies instead to examine outliers
+        class_correct_top1 = defaultdict(int)
+        class_correct_top5 = defaultdict(int)
+        class_total = defaultdict(int)
+        print(f"predicting all classes: ")
+
         with torch.no_grad():
             for imgs, lbls in loader:
                 imgs, lbls = imgs.cuda(), lbls.cuda()
                 outs = model(imgs)
                 loss = criterion(outs, lbls)
                 prec1, prec5 = accuracy_topk(outs, lbls, (1,5))
+
                 losses.update(loss.item(), imgs.size(0))
                 top1.update(prec1, imgs.size(0))
                 top5.update(prec5, imgs.size(0))
+
+                _, pred_top5 = outs.topk(5, dim=1, largest=True, sorted=True)
+                for i in range(lbls.size(0)):
+                    true_label = lbls[i].item()
+                    class_total[true_label] += 1
+                    if pred_top5[i, 0].item() == true_label:
+                        class_correct_top1[true_label] += 1
+                    if true_label in pred_top5[i].tolist():
+                        class_correct_top5[true_label] += 1
+
+        # Print per-class stats
+        print(f"\n[{mode}] Per-Class Accuracy Report:")
+        idx_to_class = loader.dataset.classes if hasattr(loader.dataset, 'classes') else {}
+        for cls_idx in sorted(class_total.keys()):
+            cls_name = idx_to_class[cls_idx] if idx_to_class else str(cls_idx)
+            top1_cls = 100.0 * class_correct_top1[cls_idx] / class_total[cls_idx]
+            top5_cls = 100.0 * class_correct_top5[cls_idx] / class_total[cls_idx]
+            print(f"  Class {cls_name:30s} | Top-1: {top1_cls:5.2f}% | Top-5: {top5_cls:5.2f}%")
+
         
     # reset masking
     if concept_ds and concepts_to_mask:
@@ -890,7 +928,7 @@ def validate(loader, model, epoch, writer, mode="Val", concept_ds=None, concepts
     writer.add_scalar(f"{mode}/Loss", losses.avg, epoch)
     writer.add_scalar(f"{mode}/Top1", top1.avg, epoch)
     writer.add_scalar(f"{mode}/Top5", top5.avg, epoch)
-    print(f"[{mode}] Epoch {epoch+1}: Loss={losses.avg:.3f}, Top1={top1.avg:.2f}, Top5={top5.avg:.2f}")
+    print(f"Average stats: [{mode}] Epoch {epoch+1}: Loss={losses.avg:.3f}, Top1={top1.avg:.2f}, Top5={top5.avg:.2f}")
 
     if concept_ds:
         print("[Alignment metrics]")
@@ -923,7 +961,7 @@ def main():
         writer.add_scalar("LR", lr_now, epoch)
 
         train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer)
-        val_acc = validate(val_loader, model, epoch, writer, mode="Val")
+        val_acc = validate(val_loader, model, epoch, writer, mode="Val", args=args, concept_ds=concept_ds, concepts_to_mask=args.mask_concepts)
 
         is_best = (val_acc > best_acc)
         best_acc = max(val_acc, best_acc)

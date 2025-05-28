@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from MODELS.ConceptDataset_QCW import ConceptDataset
 from MODELS.model_resnet_qcw_bn import build_resnet_qcw
 from masking_utils import mask_concepts, apply_per_layer_activation_masks, clear_all_activation_masks
-from train_qcw import build_concept_loaders, align_concepts
 
 def load_cw_resnet(checkpoint_path, concept_dir, depth=18, whitened_layers=[5],
                    act_mode="pool_max", vanilla_pretrain=False):
@@ -18,7 +17,7 @@ def load_cw_resnet(checkpoint_path, concept_dir, depth=18, whitened_layers=[5],
     concept_ds = ConceptDataset(
         root_dir=f"{concept_dir}/concept_train",
         bboxes_file=f"{concept_dir}/bboxes.json",
-        high_level_filter=[],
+        high_level_filter=[], # pass in parameters from concepts
         transform=None,
         crop_mode="crop"
     )
