@@ -35,6 +35,7 @@ venv/
 ENV/
 env.bak/
 *venv*/
+requirements.txt
 
 # Conda environments
 # (this ignores any Conda environment folders named `.conda_env`,
@@ -70,16 +71,17 @@ desktop.ini
 # sbatch files
 *.sh
 
+# Checkpoints and log files
 data/
-runs/
 logs/
+runs/
 runs_proper/
 dataset_scripts/logs/
+qcw_plots/
 checkpoints/
 checkpoints-new/
+model_checkpoints/
 old-runs/
 old-runs2/
-runs_proper/
 kaggle.json
-requirements.txt
 figures/
