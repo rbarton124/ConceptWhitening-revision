@@ -48,7 +48,7 @@ parser.add_argument("--epochs", type=int, default=100, help="Number of training 
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
 parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
 parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
-parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rate decay epoch.")
+parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
 # CW Training hyperparams
@@ -57,11 +57,12 @@ parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in
 parser.add_argument("--use_bn_qcw", action="store_true",
                     help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 parser.add_argument("--cw_lambda", type=float, default=0.05, help="Lambda parameter for QCW.")
+parser.add_argument("--concept_image_mode", type=str, default="crop", choices=["crop","redact","blur","none"], help="How to handle concept images.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
 # System
-parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
+parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
 parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
@@ -168,7 +169,7 @@ def build_concept_loaders(args):
 
     hl_list = [x.strip() for x in args.concepts.split(",")]
 
-    crop_mode = "crop" # how to handle bounding boxes
+    crop_mode = args.concept_image_mode
 
     # create main concept dataset
     concept_dataset = ConceptDataset(
