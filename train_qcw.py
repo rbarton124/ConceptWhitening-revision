@@ -21,8 +21,6 @@ from PIL import ImageFile
 
 from types import SimpleNamespace
 
-ImageFile.LOAD_TRUNCATED_IMAGES = True # allow loading truncated images
-
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
@@ -48,9 +46,9 @@ parser.add_argument("--act_mode", default="pool_max", help="Activation mode for 
 # Training hyperparams
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
-parser.add_argument("--lr", type=float, default=0.2, help="Initial learning rate.")
+parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
 parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
-parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rate decay epoch.")
+parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
 # CW Training hyperparams
@@ -59,11 +57,12 @@ parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in
 parser.add_argument("--use_bn_qcw", action="store_true",
                     help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 parser.add_argument("--cw_lambda", type=float, default=0.05, help="Lambda parameter for QCW.")
+parser.add_argument("--concept_image_mode", type=str, default="crop", choices=["crop","redact","blur","none"], help="How to handle concept images.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
 # System
-parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
+parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
 parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
@@ -109,17 +108,20 @@ writer = SummaryWriter(log_dir=os.path.join(args.log_dir, f"{args.prefix}_{int(t
 def build_main_loaders(args):
     # train transforms
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(CROP_SIZE),
+        transforms.RandomResizedCrop(CROP_SIZE, scale=(0.5, 1.0)),
         transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), shear=5, interpolation=transforms.InterpolationMode.BILINEAR),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
-    # val/test transforms
+
+    # val transforms
     val_transform = transforms.Compose([
         transforms.Resize(RESIZE_SIZE),
         transforms.CenterCrop(CROP_SIZE),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     train_dir = os.path.join(args.data_dir, "train")
@@ -157,15 +159,17 @@ def build_concept_loaders(args):
 
     # concept transforms (similar to train)
     concept_transform = transforms.Compose([
-        transforms.RandomResizedCrop(CROP_SIZE),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-    ])
+    transforms.RandomResizedCrop(CROP_SIZE, scale=(0.8, 1.0), ratio=(0.9, 1.1), interpolation=transforms.InterpolationMode.BILINEAR),
+    transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15, hue=0.05),
+    transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), interpolation=transforms.InterpolationMode.BILINEAR),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+])
 
     hl_list = [x.strip() for x in args.concepts.split(",")]
 
-    crop_mode = "crop" # how to handle bounding boxes
+    crop_mode = args.concept_image_mode
 
     # create main concept dataset
     concept_dataset = ConceptDataset(
@@ -271,7 +275,12 @@ if not args.vanilla_pretrain:
         # one axis per concept
         subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
 
-subspace_mapping = concept_ds.subspace_mapping
+else:
+    concept_loaders   = []
+    concept_ds        = None
+    subspaces         = {}
+
+subspace_mapping = subspaces
 print(f"Subspace mapping: {subspace_mapping}")
 
 model = build_resnet_qcw(
@@ -295,6 +304,7 @@ def maybe_resume_checkpoint(model, optimizer, args):
     """
     start_epoch, best_prec = 0, 0.0
     if not args.resume or not os.path.isfile(args.resume):
+        print("[Checkpoint] No checkpoint found or provided.")
         return start_epoch, best_prec
 
     print(f"[Checkpoint] Resuming from {args.resume}")
@@ -349,7 +359,7 @@ def maybe_resume_checkpoint(model, optimizer, args):
     if isinstance(ckpt, dict):
         if not args.only_load_weights:
             start_epoch = ckpt.get("epoch", 0)
-            best_prec = ckpt.get("best_prec1", 0.0)
+            # best_prec = ckpt.get("best_prec1", 0.0) # I don't want to keep this as it gets confusing
             if "optimizer" in ckpt:
                 opt_sd = ckpt["optimizer"]
                 try:
@@ -844,7 +854,7 @@ def main():
         }
         save_checkpoint(cstate, is_best, args.prefix)
 
-    test_acc = validate(test_loader, model, args.epochs, writer, mode="Test")
+    test_acc = validate(test_loader, model, start_epoch + args.epochs - 1, writer, mode="Test")
     print(f"[Done] Best Val={best_acc:.2f}, Final Test={test_acc:.2f}")
     writer.close()
 
