@@ -1,4 +1,5 @@
 import argparse
+import re
 import os
 import time
 import random
@@ -21,7 +22,7 @@ from PIL import ImageFile
 
 from types import SimpleNamespace
 
-from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
+from MODELS.factory_qcw import build_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
 # Global Constants
@@ -41,7 +42,8 @@ parser.add_argument("--concepts", required=True, help="Comma-separated list of h
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
 # Model hyperparams
 parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
-parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
+parser.add_argument("--model", default="resnet", choices=["resnet", "densenet", "vgg16"], help="Which backbone to use.")
+parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50), or DenseNet depth (121 or 161). Ignored for VGG16.")
 parser.add_argument("--act_mode", default="pool_max", help="Activation mode for QCW: 'mean','max','pos_mean','pool_max'")
 # Training hyperparams
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
@@ -54,8 +56,6 @@ parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight dec
 # CW Training hyperparams
 parser.add_argument("--batches_per_concept", type=int, default=1, help="Number of batches per subconcept for each alignment step.")
 parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in mini-batches) we do concept alignment.")
-parser.add_argument("--use_bn_qcw", action="store_true",
-                    help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 parser.add_argument("--cw_lambda", type=float, default=0.05, help="Lambda parameter for QCW.")
 parser.add_argument("--concept_image_mode", type=str, default="crop", choices=["crop","redact","blur","none"], help="How to handle concept images.")
 # Checkpoint
@@ -73,9 +73,16 @@ parser.add_argument("--use_free", action="store_true", help="Enable free unlabel
 
 args = parser.parse_args()
 
-# Setup
-if args.use_bn_qcw:
-    from MODELS.model_resnet_qcw_bn import build_resnet_qcw, get_last_qcw_layer
+# Validate model and depth combinations
+if args.model != "resnet" and args.depth not in [None, 121, 161]:
+    args.depth = {"densenet": 161, "vgg16": None}[args.model]  # Force valid default
+    print(f"Ignoring --depth for {args.model}, using {args.depth}")
+
+if args.model == "resnet" and args.depth not in [18, 50]:
+    raise ValueError(f"ResNet depth must be 18 or 50, got {args.depth}")
+
+if args.model == "densenet" and args.depth not in [121, 161]:
+    raise ValueError(f"DenseNet depth must be 121 or 161, got {args.depth}")
 
 if args.vanilla_pretrain:
     print("Vanilla pretraining mode: Disabling Concept Whitening and related arguments.")
@@ -85,7 +92,21 @@ if args.vanilla_pretrain:
 else:
     try:
         args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]
-    except ValueError:
+        # Validate whitened_layers based on model
+        max_idx = {
+            "resnet": 8 if args.depth == 18 else 16,
+            "densenet": 5,
+            "vgg16": 13
+        }[args.model]
+        
+        invalid_indices = [x for x in args.whitened_layers if x < 1 or x > max_idx]
+        if invalid_indices:
+            raise ValueError(f"whitened_layers {invalid_indices} outside valid range 1..{max_idx} for {args.model}.")
+            
+    except ValueError as e:
+        if "whitened_layers" in str(e):
+            print(e)
+            exit(1)
         print("Invalid whitened_layers format. Should be a comma-separated list of integers.")
         if args.whitened_layers == '':
             args.whitened_layers = []
@@ -283,22 +304,23 @@ else:
 subspace_mapping = subspaces
 print(f"Subspace mapping: {subspace_mapping}")
 
-model = build_resnet_qcw(
+model = build_qcw(
+    model_type=args.model,
     num_classes=NUM_CLASSES,
     depth=args.depth,
     whitened_layers=args.whitened_layers,
     act_mode=args.act_mode,
     subspaces=subspace_mapping,
-    use_subspace=(not args.disable_subspaces), # this logic is not fleshed out yet
-    use_free=args.use_free, # doesn't do anything
+    use_subspace=(not args.disable_subspaces),
+    use_free=args.use_free,
+    cw_lambda=args.cw_lambda,
     pretrained_model=None,
     vanilla_pretrain=args.vanilla_pretrain
 )
 
-# Resume Checkpoint
 def maybe_resume_checkpoint(model, optimizer, args):
     """
-    Resume from checkpoint, handling ResNet or QCW format.
+    Resume from checkpoint, handling ResNet, DenseNet, VGG, or QCW formats.
     Renames layers as needed and loads optimizer state if requested.
     Returns: (start_epoch, best_prec)
     """
@@ -309,31 +331,34 @@ def maybe_resume_checkpoint(model, optimizer, args):
 
     print(f"[Checkpoint] Resuming from {args.resume}")
     ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
+    raw_sd = ckpt.get("state_dict", ckpt)
 
-    raw_sd = ckpt.get("state_dict", ckpt)  # either the 'state_dict' sub-dict or the entire ckpt
-
-    # map checkpoint keys to our model keys, handling module prefix and skipping irrelevant keys
     model_sd = model.state_dict()
     renamed_sd = {}
 
     def rename_key(old_key):
-        # remove leading "module." prefix if present
+        # Remove DataParallel 'module.' prefix
         if old_key.startswith("module."):
             old_key = old_key[len("module."):]
-        # add backbone prefix if needed
-        if not old_key.startswith("backbone.") and ("backbone."+old_key in model_sd):
-            return "backbone."+old_key
-        if old_key.startswith("fc.") and ("backbone.fc"+old_key[2:] in model_sd):
-            return "backbone."+old_key
-        # fallback to partial loading
-        return old_key  # fallback if no special rename
-    
-    matched_keys = []
-    skipped_keys = []
-    
+
+        # Match old DenseNet-style conv.norm naming
+        old_key = re.sub(r"\.norm\.(\d+)", lambda m: f".norm{m.group(1)}", old_key)
+        old_key = re.sub(r"\.conv\.(\d+)", lambda m: f".conv{m.group(1)}", old_key)
+
+        # Optional backbone prefix
+        if not old_key.startswith("backbone.") and ("backbone." + old_key in model_sd):
+            return "backbone." + old_key
+        if old_key.startswith("fc.") and ("backbone.fc" + old_key[2:] in model_sd):
+            return "backbone." + old_key
+        if old_key.startswith("classifier.") and ("backbone.classifier" + old_key[10:] in model_sd):
+            return "backbone.classifier" + old_key[10:]
+
+        return old_key
+
+    matched_keys, skipped_keys = [], []
+
     for ckpt_k, ckpt_v in raw_sd.items():
         new_k = rename_key(ckpt_k)
-        # keep if key exists and shape matches
         if new_k in model_sd:
             if ckpt_v.shape == model_sd[new_k].shape:
                 renamed_sd[new_k] = ckpt_v
@@ -342,7 +367,7 @@ def maybe_resume_checkpoint(model, optimizer, args):
                 skipped_keys.append(f"{ckpt_k}: shape {ckpt_v.shape} != {model_sd[new_k].shape}")
         else:
             skipped_keys.append(f"{ckpt_k}: no match found in model")
-    
+
     print("Loading model...")
     result = model.load_state_dict(renamed_sd, strict=False)
     print("Missing keys:", result.missing_keys)
@@ -355,16 +380,13 @@ def maybe_resume_checkpoint(model, optimizer, args):
     for sk in skipped_keys:
         print("   ", sk)
 
-    # possibly recover epoch/best_prec/optimizer if it’s a QCW style checkpoint
     if isinstance(ckpt, dict):
         if not args.only_load_weights:
             start_epoch = ckpt.get("epoch", 0)
-            # best_prec = ckpt.get("best_prec1", 0.0) # I don't want to keep this as it gets confusing
             if "optimizer" in ckpt:
                 opt_sd = ckpt["optimizer"]
                 try:
                     optimizer.load_state_dict(opt_sd)
-                    # move momentum buffers to cuda
                     for param in optimizer.state.values():
                         if isinstance(param, dict) and "momentum_buffer" in param:
                             buf = param["momentum_buffer"]
@@ -372,10 +394,10 @@ def maybe_resume_checkpoint(model, optimizer, args):
                                 param["momentum_buffer"] = buf.cuda()
                 except Exception as e:
                     print(f"[Warning] Could not load optimizer state: {e}")
-
         print(f"[Checkpoint] Resumed epoch={start_epoch}, best_prec={best_prec:.2f}")
 
     return start_epoch, best_prec
+
 
 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 start_epoch, best_prec = maybe_resume_checkpoint(model, optimizer, args)

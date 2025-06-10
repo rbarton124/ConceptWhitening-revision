@@ -40,7 +40,7 @@ def main():
     parser.add_argument("runs_dir", help="Directory containing TB runs")
     parser.add_argument("--tag", default="Val/Loss", 
                         help="Scalar tag to check")
-    parser.add_argument("--min_steps", type=int, default=45,
+    parser.add_argument("--min_steps", type=int, default=47,
                         help="Min steps to keep a run")
     parser.add_argument("--cull_repeats", action="store_true",
                         help="Remove older runs with same name")

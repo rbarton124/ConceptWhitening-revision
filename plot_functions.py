@@ -501,6 +501,7 @@ def main():
 
     print("=========== HIGH-LEVEL SUBSPACE LAYOUT ===========")
     for hl, axes in ds.subspace_mapping.items():
+        # axes is already a list of global axis indices for that HL slice
         axes_str = ", ".join(map(str, axes))
         print(f"  {hl:<12}:  [{axes_str}]")
     print("==================================================\n")
