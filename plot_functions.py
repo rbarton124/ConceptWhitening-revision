@@ -42,13 +42,56 @@ def _load_checkpoint(model: nn.Module, ckpt_path: str) -> nn.Module:
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     raw  = ckpt.get("state_dict", ckpt)
     msd  = model.state_dict(); clean = {}
+    
+    # Track keys that couldn't be loaded
+    shape_mismatched = []
+    not_found_in_model = []
+    
+    # Process checkpoint keys
     for k, v in raw.items():
         k2 = k.replace("module.", "").replace("model.", "")
         if not k2.startswith("backbone.") and f"backbone.{k2}" in msd:   k2 = f"backbone.{k2}"
         if k2.startswith("fc.")        and f"backbone.{k2}" in msd:      k2 = f"backbone.{k2}"
-        if k2 in msd and v.shape == msd[k2].shape:  clean[k2] = v
+        
+        if k2 in msd:
+            if v.shape == msd[k2].shape:
+                clean[k2] = v
+            else:
+                shape_mismatched.append((k, k2, str(v.shape), str(msd[k2].shape)))
+        else:
+            not_found_in_model.append(k)
+    
+    # Track model keys not found in checkpoint
+    not_in_checkpoint = [k for k in msd.keys() if k not in clean]
+    
+    # Load the state dict
     model.load_state_dict(clean, strict=False)
+    
+    # Log loading statistics
     logging.info("Loaded %d/%d tensors from %s", len(clean), len(raw), ckpt_path)
+    
+    # Log detailed information about unloaded modules
+    if shape_mismatched:
+        logging.info("Modules with shape mismatch (not loaded):")
+        for orig_k, model_k, ckpt_shape, model_shape in shape_mismatched[:10]:
+            logging.info("  %s -> %s: checkpoint shape %s, model shape %s", orig_k, model_k, ckpt_shape, model_shape)
+        if len(shape_mismatched) > 10:
+            logging.info("  ...and %d more", len(shape_mismatched) - 10)
+    
+    if not_found_in_model:
+        logging.info("Checkpoint keys not found in model:")
+        for k in not_found_in_model[:10]:
+            logging.info("  %s", k)
+        if len(not_found_in_model) > 10:
+            logging.info("  ...and %d more", len(not_found_in_model) - 10)
+    
+    if not_in_checkpoint:
+        logging.info("Model keys not found in checkpoint:")
+        for k in not_in_checkpoint[:10]:
+            logging.info("  %s", k)
+        if len(not_in_checkpoint) > 10:
+            logging.info("  ...and %d more", len(not_in_checkpoint) - 10)
+    
     return model
 
 
@@ -449,6 +492,18 @@ def main():
     hl_list = [s.strip() for s in args.hl_concepts.split(",") if s.strip()]
     bboxes  = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
     ds      = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
+    
+    print("\n================ SUB-CONCEPT → AXIS MAP ================")
+    for sc_name in ds.get_subconcept_names():
+        idx = ds.sc2idx[sc_name]
+        print(f"  [{idx:>3}]  {sc_name}")
+    print("========================================================\n")
+
+    print("=========== HIGH-LEVEL SUBSPACE LAYOUT ===========")
+    for hl, axes in ds.subspace_mapping.items():
+        axes_str = ", ".join(map(str, axes))
+        print(f"  {hl:<12}:  [{axes_str}]")
+    print("==================================================\n")
 
     analyzer = PurityAnalyzer(model, ds, bs=args.batch_size,
                               out_dir=args.output_dir, cfg=args)
