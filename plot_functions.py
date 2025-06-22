@@ -13,6 +13,15 @@ import torchvision.transforms as T
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from PIL import Image
+
+from rank_metrics import run_rank_metrics  # NEW helper
+
+# Output subdirectories
+PUR_SUBDIR = "purity"
+HIER_SUBDIR = "hierarchy"
+MAUC_SUBDIR = "masked_auc"
+RANK_SUBDIR = "rank_metrics"
 
 from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
@@ -111,6 +120,11 @@ class PurityAnalyzer:
         global_max = self.acts.max(1) if self.cfg.auc_max else None
         hl_max_cache = {hl: self.acts[:, ax].max(1) if self.cfg.auc_max else None
                         for hl, ax in self.subspace.items()}
+                        
+        # Map each sample to its high-level concept name (for masked-AUC)
+        if self.cfg.masked_auc:
+            labels_hl = np.array([self.sc2hl.get(int(l), "") for l in self.y], dtype=object)
+        
 
         for idx, name in enumerate(self.sc_names):
             hl, mask = self.sc2hl[idx], (self.y == idx)
@@ -137,6 +151,20 @@ class PurityAnalyzer:
                 else:
                     leak_idx = leak_auc = None
                 unlabeled_axis_idx, unlabeled_axis_auc = prim_ax, prim_auc
+            
+            # -------- masked-AUC ("hier-AUC") --------------------------------
+            if self.cfg.masked_auc:
+                # Start with a copy of the scores from the primary axis
+                scores = np.copy(self.acts[:, prim_ax])
+                
+                # Zero out scores for samples from different high-level concepts
+                # (keep scores only for samples belonging to this concept's high-level group)
+                scores[labels_hl != hl] = 0.0
+                
+                # Calculate AUC with the masked scores
+                hier_auc = _auc(mask, scores)
+            else:
+                hier_auc = None
 
             # ---------------- hierarchy metrics ------------------------------
             if self.cfg.auc_max:
@@ -168,6 +196,9 @@ class PurityAnalyzer:
                 "leak_axis_auc": leak_auc,
                 "auc_max_global": auc_gmax, "auc_max_hl": auc_hlmax,
                 "delta_max": delta_max,    "energy_ratio": e_ratio,
+                # Masked AUC comparison
+                "baseline_auc": prim_auc,
+                "hier_auc": hier_auc,
             }
             # Dropped CSV columns: best_ax_hl, auc_hl, mass_global, mass_hl, mass_retained_pct, topk_global (see patch guide for rationale)
 
@@ -192,7 +223,7 @@ class TopKExtractor:
         self.acts, self.labels, self.ds, self.out = acts, labels, ds, out_dir
         self.model = model
 
-    def dump(self, k=10, save_transformed=False):
+    def dump(self, concept_dir, k=10, save_transformed=False):
         from torchvision.utils import save_image
         os.makedirs(self.out, exist_ok=True)
         mean, std = torch.tensor([0.485,0.456,0.406]), torch.tensor([0.229,0.224,0.225])
@@ -213,9 +244,21 @@ class TopKExtractor:
             for rnk, j in enumerate(top_idx):
                 dst = os.path.join(dst_dir, f"rank_{rnk+1}.jpg")
                 if save_transformed:
-                    img = imgs_all[j].clone()
-                    img.mul_(std[:,None,None]).add_(mean[:,None,None]).clamp_(0,1)
-                    save_image(img.cpu(), dst)
+                    # Open original image using PIL
+                    img_path = self.ds.samples[j][0]
+                    img = Image.open(img_path).convert("RGB")
+
+                    # Get bounding box from dataset
+                    img_key = os.path.relpath(img_path, concept_dir)
+                    bbox = self.ds.bboxes_dict.get(img_key)
+
+                    if bbox:
+                        x1, y1, x2, y2 = map(int, bbox)
+                        img = img.crop((x1, y1, x2, y2))
+                    else:
+                        print(f"No bbox found for {img_key}, saving full image.")
+
+                    img.save(dst)
                 else:
                     shutil.copy2(self.ds.samples[j][0], dst)
         logging.info("Top-k images saved to %s", self.out)
@@ -333,6 +376,37 @@ def hierarchy_plot(info: Dict[str, dict], out_path: str,
     logging.info("Hierarchy plot saved to %s", out_path)
 
 # -----------------------------------------------------------------------------#
+# Masked-AUC plot
+# -----------------------------------------------------------------------------#
+def masked_auc_plot(info: Dict[str, dict], out_path: str):
+    import pandas as pd, numpy as np, matplotlib.pyplot as plt
+
+    df = pd.DataFrame(info).T
+    if "hier_auc" not in df.columns or df["hier_auc"].isna().all():
+        logging.info("masked_auc flag off → skipping hier-AUC plot."); return
+
+    df = df.sort_values("baseline_auc", ascending=False).reset_index()
+    n  = len(df)
+    x  = np.arange(n)
+
+    plt.figure(figsize=(max(6, n), 5))
+    w = 0.35
+    plt.bar(x - w/2, df["baseline_auc"], width=w, label="Baseline AUC",  color="grey")
+    plt.bar(x + w/2, df["hier_auc"],     width=w, label="Masked AUC",    color="teal")
+    plt.axhline(0.5, color="k", ls=":", lw=.8)
+
+    plt.xticks(x, df["index"], rotation=45, ha="right")
+    plt.ylabel("ROC-AUC")
+    plt.ylim(0, 1)
+    plt.title("Effect of HL masking on axis purity")
+    plt.legend()
+    plt.tight_layout()
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    plt.savefig(out_path, dpi=120); plt.close()
+    logging.info("Masked-AUC plot saved to %s", out_path)
+
+# -----------------------------------------------------------------------------#
 # CLI
 # -----------------------------------------------------------------------------#
 def get_args():
@@ -349,7 +423,7 @@ def get_args():
     p.add_argument("--concept_dir", required=True)
     p.add_argument("--hl_concepts", default="")
     p.add_argument("--bboxes_file", default="")
-    p.add_argument("--image_state", default="crop", choices=["crop","redact","none"])
+    p.add_argument("--image_state", default="crop", choices=["crop","redact","blur","none"])
     # run
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--run_purity", action="store_true")
@@ -358,6 +432,10 @@ def get_args():
     p.add_argument("--save_transformed", action="store_true")
     p.add_argument("--auc_max", action="store_true")      # Δ_max metric
     p.add_argument("--energy_ratio", action="store_true") # energy metric
+    p.add_argument("--masked_auc", action="store_true",
+               help="Also compute AUC after zero-filling activations outside each HL slice.")
+    p.add_argument("--rank_metrics", action="store_true",
+                help="Compute mean-rank / Hit@k hierarchy metric")
     p.add_argument("--verbose", action="store_true")
     # out
     p.add_argument("--output_dir", default="qcw_plots")
@@ -384,20 +462,84 @@ def main():
     hl_list = [s.strip() for s in args.hl_concepts.split(",") if s.strip()]
     bboxes  = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
     ds      = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
+    
+    print("\n================ SUB-CONCEPT → AXIS MAP ================")
+    for sc_name in ds.get_subconcept_names():
+        idx = ds.sc2idx[sc_name]
+        print(f"  [{idx:>3}]  {sc_name}")
+    print("========================================================\n")
+
+    print("=========== HIGH-LEVEL SUBSPACE LAYOUT ===========")
+    for hl, axes in ds.subspace_mapping.items():
+        # axes is already a list of global axis indices for that HL slice
+        axes_str = ", ".join(map(str, axes))
+        print(f"  {hl:<12}:  [{axes_str}]")
+    print("==================================================\n")
 
     analyzer = PurityAnalyzer(model, ds, bs=args.batch_size,
                               out_dir=args.output_dir, cfg=args)
 
     if args.run_purity:
         info = analyzer.compute()
-        bar_plot(info, os.path.join(args.output_dir, "concept_purity.png"))
-        hierarchy_plot(info, os.path.join(args.output_dir, "hierarchy_metrics.png"), show_delta   = args.auc_max, show_energy  = args.energy_ratio)
+        # Save full results for debugging
+        pd.DataFrame(info).T.to_csv(os.path.join(args.output_dir, "result.csv"))
+        
+        # Purity plots
+        purity_dir = os.path.join(args.output_dir, PUR_SUBDIR)
+        os.makedirs(purity_dir, exist_ok=True)
+        bar_plot(info, os.path.join(purity_dir, "concept_purity.png"))
+        pd.DataFrame({k:{"best_axis_auc":v["best_axis_auc"],
+                       "best_axis_idx":v["best_axis_idx"],
+                       "best_axis_is_labeled":v["best_axis_is_labeled"]}
+                   for k,v in info.items()}
+                  ).T.to_csv(os.path.join(purity_dir, "purity.csv"))
+
+        # ---- Hierarchy (delta / energy) -----
+        if args.auc_max or args.energy_ratio:
+            hierarchy_dir = os.path.join(args.output_dir, HIER_SUBDIR)
+            os.makedirs(hierarchy_dir, exist_ok=True)
+            hierarchy_plot(info, os.path.join(hierarchy_dir, "hierarchy_metrics.png"),
+                          show_delta=args.auc_max, show_energy=args.energy_ratio)
+            cols = []
+            if args.auc_max: cols.append("delta_max")
+            if args.energy_ratio: cols.append("energy_ratio")
+            if cols:
+                pd.DataFrame(info).T[cols].to_csv(os.path.join(hierarchy_dir, "hierarchy.csv"))
+
+        # ---- Masked AUC -----
+        if args.masked_auc:
+            masked_auc_dir = os.path.join(args.output_dir, MAUC_SUBDIR)
+            os.makedirs(masked_auc_dir, exist_ok=True)
+            masked_auc_plot(info, os.path.join(masked_auc_dir, "masked_vs_baseline_auc.png"))
+            pd.DataFrame(info).T[["baseline_auc", "hier_auc"]].to_csv(
+                os.path.join(masked_auc_dir, "masked_auc.csv"))
+        
+        # ---- Rank Metrics -----
+        if args.rank_metrics:
+            # Map subconcept index → designated axis
+            axis_map = {i: d["best_axis_idx"] for i, d in enumerate(info.values())}
+            concept_names = list(info.keys())
+            
+            # Get labeled axes for color-coding (all non-free axes)
+            labeled_axes = []
+            for hl, axes in analyzer.subspace.items():
+                if hl != "_free":
+                    labeled_axes.extend(axes)
+            
+            run_rank_metrics(analyzer.acts,
+                            analyzer.y,
+                            analyzer.subspace,
+                            analyzer.sc2hl,
+                            axis_map,
+                            os.path.join(args.output_dir, RANK_SUBDIR),
+                            concept_names=concept_names,
+                            labeled_axes=labeled_axes)
 
     if args.topk_images:
         TopKExtractor(analyzer.acts, analyzer.y, ds,
                       os.path.join(args.output_dir, "topk_concept_images"),
                       model if args.save_transformed else None
-                     ).dump(k=args.k, save_transformed=args.save_transformed)
+                     ).dump(concept_dir=args.concept_dir, k=args.k, save_transformed=args.save_transformed)
 
 if __name__ == "__main__":
     main()

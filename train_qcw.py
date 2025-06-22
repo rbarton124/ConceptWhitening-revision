@@ -39,9 +39,9 @@ parser.add_argument("--act_mode", default="pool_max", help="Activation mode for 
 # Training hyperparams
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
-parser.add_argument("--lr", type=float, default=0.2, help="Initial learning rate.")
+parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
 parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
-parser.add_argument("--lr_decay_epoch", type=int, default=50, help="Learning rate decay epoch.")
+parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
 # CW Training hyperparams
@@ -50,18 +50,19 @@ parser.add_argument("--cw_align_freq", type=int, default=40, help="How often (in
 parser.add_argument("--use_bn_qcw", action="store_true",
                     help="Replace BN with QCW inside ResNet blocks (recommend this or --vanilla_pretrain for training from scratch). Normal (block-based) QCW requires a pretrained ResNet.")
 parser.add_argument("--cw_lambda", type=float, default=0.05, help="Lambda parameter for QCW.")
+parser.add_argument("--concept_image_mode", type=str, default="crop", choices=["crop","redact","blur","none"], help="How to handle concept images.")
 # Checkpoint
 parser.add_argument("--resume", default="", type=str, help="Path to checkpoint to resume from.")
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
 # System
-parser.add_argument("--seed", type=int, default=4242, help="Random seed.")
+parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
 parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
 # Feature toggles
-parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
-parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
-parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
+parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.") # used to work, isn't working lately TODO: ACTUALLY FIX [issue was subspace null mapping issue]
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet TODO: FIX
+parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet TODO: FIX
 
 args = parser.parse_args()
 
@@ -78,6 +79,9 @@ else:
     raise ValueError(f"Unsupported dataset: {args.dataset}")
 
 # Setup
+if args.use_bn_qcw:
+    from MODELS.model_resnet_qcw_bn import build_resnet_qcw, get_last_qcw_layer
+
 if args.vanilla_pretrain:
     print("Vanilla pretraining mode: Disabling Concept Whitening and related arguments.")
     args.whitened_layers = []
@@ -85,7 +89,7 @@ if args.vanilla_pretrain:
     args.cw_align_freq = None
 else:
     try:
-        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]  # Convert to list of integers
+        args.whitened_layers = [int(x) for x in args.whitened_layers.split(",")]
     except ValueError:
         print("Invalid whitened_layers format. Should be a comma-separated list of integers.")
         if args.whitened_layers == '':
@@ -109,17 +113,20 @@ writer = SummaryWriter(log_dir=os.path.join(args.log_dir, f"{args.prefix}_{int(t
 def build_main_loaders(args):
     # train transforms
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(CROP_SIZE),
+        transforms.RandomResizedCrop(CROP_SIZE, scale=(0.5, 1.0)),
         transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), shear=5, interpolation=transforms.InterpolationMode.BILINEAR),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
-    # val/test transforms
+
+    # val transforms
     val_transform = transforms.Compose([
         transforms.Resize(RESIZE_SIZE),
         transforms.CenterCrop(CROP_SIZE),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     train_dir = os.path.join(args.data_dir, "train")
@@ -157,15 +164,17 @@ def build_concept_loaders(args):
 
     # concept transforms (similar to train)
     concept_transform = transforms.Compose([
-        transforms.RandomResizedCrop(CROP_SIZE),
+        transforms.RandomResizedCrop(CROP_SIZE, scale=(0.8, 1.0), ratio=(0.9, 1.1), interpolation=transforms.InterpolationMode.BILINEAR),
         transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.15, contrast=0.15, saturation=0.15, hue=0.05),
+        transforms.RandomAffine(degrees=5, translate=(0.05, 0.05), interpolation=transforms.InterpolationMode.BILINEAR),
         transforms.ToTensor(),
-        transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
     hl_list = [x.strip() for x in args.concepts.split(",")]
 
-    crop_mode = "crop" # how to handle bounding boxes
+    crop_mode = args.concept_image_mode
 
     # create main concept dataset
     concept_dataset = ConceptDataset(
@@ -224,7 +233,7 @@ print(f"[Data] #Main Train: {len(train_loader.dataset)}")
 print(f"[Data] #Val:        {len(val_loader.dataset)}")
 print(f"[Data] #Test:       {len(test_loader.dataset)}")
 
-concept_loaders, concept_ds, subconcept_loaders, subspaces, subspace_mapping = None, None, None, None, None  # init vars for vanilla pretraining
+concept_loaders, concept_ds, subconcept_loaders, subspaces = None, None, None, None # init vars for vanilla pretraining
 # build concept loaders if needed
 if not args.vanilla_pretrain:
     concept_loaders, concept_ds = build_concept_loaders(args)
@@ -271,9 +280,13 @@ if not args.vanilla_pretrain:
         # one axis per concept
         subspaces = {hl: [0] for hl in concept_ds.subspace_mapping.keys()}
 
-if concept_ds:
-    subspace_mapping = concept_ds.subspace_mapping
-    print(f"Subspace mapping: {subspace_mapping}")
+else:
+    concept_loaders   = []
+    concept_ds        = None
+    subspaces         = {}
+
+subspace_mapping = subspaces
+print(f"Subspace mapping: {subspace_mapping}")
 
 model = build_resnet_qcw(
     num_classes=NUM_CLASSES,
@@ -296,6 +309,7 @@ def maybe_resume_checkpoint(model: nn.DataParallel[ResNetQCW], optimizer: torch.
     """
     start_epoch, best_prec = 0, 0.0
     if not args.resume or not os.path.isfile(args.resume):
+        print("[Checkpoint] No checkpoint found or provided.")
         return start_epoch, best_prec
 
     print(f"[Checkpoint] Resuming from {args.resume}")
@@ -350,7 +364,6 @@ def maybe_resume_checkpoint(model: nn.DataParallel[ResNetQCW], optimizer: torch.
     if isinstance(ckpt, dict):
         if not args.only_load_weights:
             start_epoch = ckpt.get("epoch", 0)
-            best_prec = ckpt.get("best_prec1", 0.0)
             if "optimizer" in ckpt:
                 opt_sd = ckpt["optimizer"]
                 try:
@@ -454,9 +467,9 @@ def train_epoch(train_loader, concept_loaders, model: nn.DataParallel[ResNetQCW]
             postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
         pbar.set_postfix(postfix_dict)
 
-        writer.add_scalar("Loss", losses.val, iteration)
-        writer.add_scalar("Top1", top1.val, iteration)
-        writer.add_scalar("Top5", top5.val, iteration)
+        writer.add_scalar("Train/Loss", losses.val, iteration)
+        writer.add_scalar("Train/Top1", top1.val, iteration)
+        writer.add_scalar("Train/Top5", top5.val, iteration)
 
 def align_concepts(model: nn.DataParallel[ResNetQCW], subconcept_loaders, concept_dataset: ConceptDataset, batches_per_concept, lambda_):
     """
@@ -846,7 +859,7 @@ def main():
         }
         save_checkpoint(cstate, is_best, args.prefix)
 
-    test_acc = validate(test_loader, model, args.epochs, writer, mode="Test")
+    test_acc = validate(test_loader, model, start_epoch + args.epochs - 1, writer, mode="Test")
     print(f"[Done] Best Val={best_acc:.2f}, Final Test={test_acc:.2f}")
     writer.close()
 
