@@ -80,8 +80,8 @@ parser.add_argument("--vanilla_pretrain", action="store_true", help="Train witho
 parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet
 # Concept masking params
-parser.add_argument("--mask_concepts", default="all_nonpresent", help="Concepts to mask, usually the subconcepts of a hl concept")
-parser.add_argument("--bird_name", default="all", help="name of bird to test concept masking on e.g. Acadian_Flycatcher")
+parser.add_argument("--mask_concepts", help="Concepts to mask, usually the subconcepts of a hl concept")
+parser.add_argument("--bird_name", help="name of bird to test concept masking on e.g. Acadian_Flycatcher")
 parser.add_argument("--json_path", default="", help="path to the json file listing all nonpresent concepts of all birds")
 
 args = parser.parse_args()
@@ -425,6 +425,8 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
     for i, (imgs, lbls) in pbar:
         iteration = epoch * len(train_loader) + i
         imgs, lbls = imgs.cuda(), lbls.cuda()
+
+        # TODO: try adding masking during training
 
         # classification forward/backward
         outputs = model(imgs)
@@ -819,7 +821,7 @@ class AverageMeter:
         self.count+= n
         self.avg = self.sum/self.count if self.count>0 else 0
 
-def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=None, concepts_to_mask=None):
+def validate_old(loader, model, epoch, writer, mode="Val", args=None, concept_ds=None, concepts_to_mask=None):
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
     losses = AverageMeter()
@@ -828,8 +830,19 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
 
     # validate concept masking
     if concept_ds and concepts_to_mask:
-        masks = mask_concepts(model, concept_ds, concepts_to_mask, bird_name=args.bird_name, json_path=args.json_path)
-        apply_per_layer_activation_masks(model, masks)
+        if args.mask_concepts == "all_nonpresent" and args.bird_name == "all":
+            with open(args.json_path, "r") as f:
+                all_nonpresent = json.load(f)
+
+            for bird in all_nonpresent.keys():
+                masks = mask_concepts(model, concept_ds, "all_nonpresent", bird_name=bird, json_path=args.json_path)
+                apply_per_layer_activation_masks(model, masks)
+                print(f"[Validate] Evaluating bird: {bird}")
+                # Run forward pass, compute metrics etc. for this bird
+        else:
+            masks = mask_concepts(model, concept_ds, args.mask_concepts, bird_name=args.bird_name, json_path=args.json_path)
+            apply_per_layer_activation_masks(model, masks)
+
     
     # produce alignment metrics if concept masking is applied
     if concept_ds:
@@ -937,6 +950,105 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
 
     return top1.avg
 
+
+def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=None, concepts_to_mask=None):
+    model.eval()
+    criterion = nn.CrossEntropyLoss().cuda()
+
+    # Helper to evaluate on one mask
+    def run_eval():
+        losses = AverageMeter()
+        top1   = AverageMeter()
+        top5   = AverageMeter()
+        class_correct_top1 = defaultdict(int)
+        class_correct_top5 = defaultdict(int)
+        class_total = defaultdict(int)
+
+        with torch.no_grad():
+            for imgs, lbls in loader:
+                imgs, lbls = imgs.cuda(), lbls.cuda()
+                outs = model(imgs)
+                loss = criterion(outs, lbls)
+                prec1, prec5 = accuracy_topk(outs, lbls, (1,5))
+
+                losses.update(loss.item(), imgs.size(0))
+                top1.update(prec1, imgs.size(0))
+                top5.update(prec5, imgs.size(0))
+
+                _, pred_top5 = outs.topk(5, dim=1, largest=True, sorted=True)
+                for i in range(lbls.size(0)):
+                    true_label = lbls[i].item()
+                    class_total[true_label] += 1
+                    if pred_top5[i, 0].item() == true_label:
+                        class_correct_top1[true_label] += 1
+                    if true_label in pred_top5[i].tolist():
+                        class_correct_top5[true_label] += 1
+
+        return {
+            "loss": losses.avg,
+            "top1": top1.avg,
+            "top5": top5.avg,
+            "class_correct_top1": dict(class_correct_top1),
+            "class_correct_top5": dict(class_correct_top5),
+            "class_total": dict(class_total)
+        }
+
+    # Handle masking
+    if concept_ds and concepts_to_mask:
+        if args.mask_concepts == "all_nonpresent" and args.bird_name == "all":
+            with open(args.json_path, "r") as f:
+                all_nonpresent = json.load(f)
+
+            for bird in sorted(all_nonpresent.keys()):
+                print(f"\n[Validate] Evaluating bird: {bird}")
+                masks = mask_concepts(model, concept_ds, "all_nonpresent", bird_name=bird, json_path=args.json_path)
+                apply_per_layer_activation_masks(model, masks)
+                result = run_eval()
+
+                clear_all_activation_masks(model)
+                # number of samples correctly classified as top1/top5 over total number of samples
+                print(f"[{mode}] Bird: {bird} | Loss={result['loss']:.3f} | Top1={result['top1']:.2f} | Top5={result['top5']:.2f}")
+
+        else:
+            masks = mask_concepts(model, concept_ds, args.mask_concepts, bird_name=args.bird_name, json_path=args.json_path)
+            apply_per_layer_activation_masks(model, masks)
+    
+    else:
+        print(f"Running val with no masks...")
+        result = run_eval()
+
+    # Print per-class stats: percentage of correctly classified top1/top5 samples per class
+    print(f"\n[{mode}] Per-Class Accuracy Report:")
+    idx_to_class = loader.dataset.classes if hasattr(loader.dataset, 'classes') else {}
+    for cls_idx in sorted(result["class_total"].keys()):
+        cls_name = idx_to_class[cls_idx] if idx_to_class else str(cls_idx)
+        top1_cls = 100.0 * result["class_correct_top1"].get(cls_idx, 0) / result["class_total"][cls_idx]
+        top5_cls = 100.0 * result["class_correct_top5"].get(cls_idx, 0) / result["class_total"][cls_idx]
+        print(f"  Class {cls_name:30s} | Top-1: {top1_cls:5.2f}% | Top-5: {top5_cls:5.2f}%")
+
+    # Logs values to tensorBoard
+    writer.add_scalar(f"{mode}/Loss", result["loss"], epoch)
+    writer.add_scalar(f"{mode}/Top1", result["top1"], epoch)
+    writer.add_scalar(f"{mode}/Top5", result["top5"], epoch)
+    print(f"Average stats: [{mode}] Epoch {epoch+1}: Loss={result['loss']:.3f}, Top1={result['top1']:.2f}, Top5={result['top5']:.2f}")
+
+    # Alignment metrics
+    if concept_ds:
+        label_to_scname = {idx: name for name, idx in concept_ds.sc2idx.items()}
+        subconcept_loaders = [(concept_ds.sc2idx[name], DataLoader(
+            torch.utils.data.Subset(concept_ds, [i for i, (_, _, _, sc) in enumerate(concept_ds.samples) if sc == name]),
+            batch_size=min(32, len(concept_ds)), shuffle=False, num_workers=2))
+            for name in concept_ds.get_subconcept_names()]
+        alignment_metrics = compute_alignment_metrics(model, subconcept_loaders, concept_ds, 1, label_to_scname)
+        print("[Alignment metrics]")
+        for k, v in alignment_metrics.items():
+            print(f" {k}: {v:.4f}")
+    
+    # clear_all_activation_masks(model)
+
+    return result["top1"]
+
+
 # Save + Resume
 def save_checkpoint(state, is_best, prefix, outdir=args.checkpoint_dir):
     os.makedirs(outdir, exist_ok=True)
@@ -961,7 +1073,11 @@ def main():
         writer.add_scalar("LR", lr_now, epoch)
 
         train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer)
-        val_acc = validate(val_loader, model, epoch, writer, mode="Val", args=args, concept_ds=concept_ds, concepts_to_mask=args.mask_concepts)
+        val_result = validate(val_loader, model, epoch, writer, mode="Val", args=args, concept_ds=concept_ds, concepts_to_mask=args.mask_concepts)
+        if isinstance(val_result, dict):
+            val_acc = sum(res["top1"] for res in val_result.values()) / len(val_result) # take average top1
+        else:
+            val_acc = val_result
 
         is_best = (val_acc > best_acc)
         best_acc = max(val_acc, best_acc)
@@ -978,12 +1094,16 @@ def main():
     if args.data_test_dir:
         # concept_train_root = os.path.join(args.concept_dir, f"concept_train")
         # analyze_concepts(concept_train_root, concept_ds)
-        test_acc = validate(test_masking_loader, model, args.epochs, writer, mode="Test")
+        test_acc = validate(test_masking_loader, model, args.epochs, writer, mode="Test", args=args, concept_ds=concept_ds, concepts_to_mask=args.mask_concepts)
     else:
-        test_acc = validate(test_loader, model, args.epochs, writer, mode="Test")
+        test_acc = validate(test_loader, model, args.epochs, writer, mode="Test", args=args, concept_ds=concept_ds, concepts_to_mask=args.mask_concepts)
     if args.mask_concepts:
         print(f"masked concepts: ", args.mask_concepts)
-    print(f"[Done] Best Val={best_acc:.2f}, Final Test={test_acc:.2f}")
+    if isinstance(best_acc, dict) and isinstance(test_acc, dict):
+        print(f"[Done] Best Val={np.mean(list(best_acc.values())):.2f}, Final Test={np.mean(list(test_acc.values())):.2f}")
+    else:
+        print(f"[Done] Best Val={best_acc:.2f}, Final Test={test_acc:.2f}")
+    
     writer.close()
 
 if __name__ == "__main__":

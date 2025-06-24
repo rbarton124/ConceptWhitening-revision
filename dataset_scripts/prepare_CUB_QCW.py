@@ -20,7 +20,7 @@ def parse_args():
                         help="Mode for high-level concept assignment.")
     parser.add_argument("--mappings", required=True,
                         help="Path to mappings.json. In 'concepts' mode, it is subConcept->HL. In 'attributes' mode, it maps 'has_wing_color'->'wing'.")
-    parser.add_argument("--concepts", required=True,
+    parser.add_argument("--concepts", default="all",
                         help="Comma-separated list of high-level concepts we include (e.g. 'wing,beak,throat,general')")
     parser.add_argument("--draw_or_copy", choices=["draw","crop","copy"], default="copy",
                         help="How to process images for concept dataset: 'draw'=draw bbox, 'crop'=crop around it, 'copy'=no modification.")
@@ -222,7 +222,10 @@ def build_concept_dataset(args):
     if args.mappings and os.path.isfile(args.mappings):
         with open(args.mappings,"r") as ff:
             with_mappings=json.load(ff)
-    selected_hl = set([x.strip().lower() for x in args.concepts.split(",")])
+    if args.concepts.strip().lower()=="all":
+        selected_hl = with_mappings.values()
+    else:
+        selected_hl = set([x.strip().lower() for x in args.concepts.split(",")])
     
     def get_hl_sub(attribute_name):
         a=attribute_name.strip().lower()

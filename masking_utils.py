@@ -2,6 +2,7 @@ import torch
 import os
 from collections import defaultdict
 import re
+import json
 
 def apply_per_layer_activation_masks(model, layer_masks):
     """
@@ -64,35 +65,15 @@ def mask_concepts_old(model, concept_ds, names_to_mask, mask_value=0.0, default_
 
     return layer_masks
 
-import json
-import os
 
 def mask_concepts(model, concept_ds, names_to_mask, mask_value=0.0, default_value=1.0, bird_name=None, json_path=None):
     """
     Create per-layer activation masks by concept name or per-bird nonpresent concepts.
 
-    Supports:
-        - Masking individual subconcepts (e.g., "wing_white")
-        - Masking entire high-level concepts (e.g., "wing")
-        - Masking all nonpresent concepts for a given bird species if names_to_mask == "all_nonpresent"
-        - Masking all nonpresent concepts across all species if bird_name == "all"
-
-    Args:
-        model: ResNetQCW model wrapped in nn.DataParallel
-        concept_ds: the ConceptDataset object
-        names_to_mask: list of names or string "all_nonpresent"
-        mask_value: value to assign to masked axes (typically 0.0)
-        default_value: value for all other axes (typically 1.0)
-        bird_name: name of the bird species, required if names_to_mask == "all_nonpresent"
-        json_path: path to the nonpresent_concepts.json file
-
     Returns:
         list of torch.Tensor masks, one per CW layer
     """
-    masked_indices = set()
-
     if isinstance(names_to_mask, str) and names_to_mask == "all_nonpresent":
-        print(f"to mask all nonpresent concepts")
         if bird_name is None:
             raise ValueError("bird_name must be provided when names_to_mask is 'all_nonpresent'")
         if not os.path.exists(json_path):
@@ -100,21 +81,14 @@ def mask_concepts(model, concept_ds, names_to_mask, mask_value=0.0, default_valu
 
         with open(json_path, "r") as f:
             all_nonpresent = json.load(f)
-            print(f"loaded bird name to nonpresent concepts json")
 
-        if bird_name == "all":
-            names_to_mask = set()
-            for bird, concepts in all_nonpresent.items():
-                names_to_mask.update(concepts)
-            print(f"[Masking ALL] Total unique concepts to mask across all birds: {len(names_to_mask)}")
+        if bird_name not in all_nonpresent:
+            print(f"[Warning] Bird name '{bird_name}' not found in {json_path}.")
+            names_to_mask = []
         else:
-            if bird_name not in all_nonpresent:
-                print(f"[Warning] Bird name '{bird_name}' not found in {json_path}.")
-                names_to_mask = []
-            else:
-                names_to_mask = all_nonpresent[bird_name]
+            names_to_mask = all_nonpresent[bird_name]
 
-    # Convert to set to avoid duplicate masking
+    masked_indices = set()
     for name in set(names_to_mask):
         if name in concept_ds.sc2idx:
             masked_indices.add(concept_ds.sc2idx[name])
@@ -131,7 +105,7 @@ def mask_concepts(model, concept_ds, names_to_mask, mask_value=0.0, default_valu
                 mask[idx] = mask_value
         layer_masks.append(mask)
 
-    print(f"[Mask Applied] Total masked concept indices: {len(masked_indices)}")
+    print(f"[Mask Applied] Bird: {bird_name} | Masked indices: {len(masked_indices)}")
     return layer_masks
 
 
