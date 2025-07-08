@@ -12,6 +12,7 @@ import torch.optim as optim
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+import torch.nn.functional as F
 
 from collections import defaultdict
 from torch.utils.data import DataLoader
@@ -956,7 +957,7 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
     criterion = nn.CrossEntropyLoss().cuda()
 
     # Helper to evaluate on one mask
-    def run_eval():
+    def run_eval_over_entire_val_set():
         losses = AverageMeter()
         top1   = AverageMeter()
         top5   = AverageMeter()
@@ -993,21 +994,73 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
             "class_total": dict(class_total)
         }
 
+    def run_eval():
+        all_outs = []
+        all_lbls = []
+
+        with torch.no_grad():
+            for imgs, lbls, *_ in loader:
+                imgs, lbls = imgs.cuda(), lbls.cuda()
+                outs = model(imgs)
+                all_outs.append(outs)
+                all_lbls.append(lbls)
+
+        if not all_outs:
+            return None
+
+        outs = torch.cat(all_outs)
+        lbls = torch.cat(all_lbls)
+
+        avg_loss = F.cross_entropy(outs, lbls, reduction='mean').item()
+        loss_vector = F.cross_entropy(outs, lbls, reduction='none').cpu()
+
+        _, pred_top5 = outs.topk(5, dim=1, largest=True, sorted=True)
+        correct_top1 = (pred_top5[:, 0] == lbls).cpu()
+        correct_top5 = torch.tensor([lbls[i] in pred_top5[i] for i in range(len(lbls))]).cpu()
+
+        per_class_data = defaultdict(lambda: {"loss": [], "top1": [], "top5": []})
+        for i in range(len(lbls)):
+            cls = lbls[i].item()
+            per_class_data[cls]["loss"].append(loss_vector[i].item())
+            per_class_data[cls]["top1"].append(correct_top1[i].item())
+            per_class_data[cls]["top5"].append(correct_top5[i].item())
+
+        per_class_result = {
+            k: {
+                "avg_loss": float(np.mean(v["loss"])),
+                "top1": float(np.mean(v["top1"])) * 100,
+                "top5": float(np.mean(v["top5"])) * 100,
+            }
+            for k, v in per_class_data.items()
+        }
+
+        return {
+            "avg_loss": avg_loss,
+            "per_class": per_class_result,
+        }
+   
     # Handle masking
     if concept_ds and concepts_to_mask:
         if args.mask_concepts == "all_nonpresent" and args.bird_name == "all":
             with open(args.json_path, "r") as f:
                 all_nonpresent = json.load(f)
 
-            for bird in sorted(all_nonpresent.keys()):
-                print(f"\n[Validate] Evaluating bird: {bird}")
-                masks = mask_concepts(model, concept_ds, "all_nonpresent", bird_name=bird, json_path=args.json_path)
-                apply_per_layer_activation_masks(model, masks)
-                result = run_eval()
+        for bird in sorted(all_nonpresent.keys()):
+            print(f"\n[Validate] Evaluating bird: {bird}")
+            masks = mask_concepts(model, concept_ds, "all_nonpresent", bird_name=bird, json_path=args.json_path)
+            apply_per_layer_activation_masks(model, masks)
 
-                clear_all_activation_masks(model)
-                # number of samples correctly classified as top1/top5 over total number of samples
-                print(f"[{mode}] Bird: {bird} | Loss={result['loss']:.3f} | Top1={result['top1']:.2f} | Top5={result['top5']:.2f}")
+            result = run_eval()
+            per_class_result = result["per_class"]
+            avg_loss = result["avg_loss"]
+
+            clear_all_activation_masks(model)
+
+            print(f"[{mode}] Bird: {bird} | Avg Loss={avg_loss:.3f}")
+            print(f"Per-class metrics for {bird} (Top5 shown):")
+            for cls in sorted(per_class_result):
+                stats = per_class_result[cls]
+                print(f"  Class {cls:03d} | Loss: {stats['avg_loss']:.3f} | Top1: {stats['top1']:.2f}% | Top5: {stats['top5']:.2f}%")
 
         else:
             masks = mask_concepts(model, concept_ds, args.mask_concepts, bird_name=args.bird_name, json_path=args.json_path)
@@ -1015,22 +1068,22 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
     
     else:
         print(f"Running val with no masks...")
-        result = run_eval()
+        result = run_eval_over_entire_val_set()
 
-    # Print per-class stats: percentage of correctly classified top1/top5 samples per class
-    print(f"\n[{mode}] Per-Class Accuracy Report:")
-    idx_to_class = loader.dataset.classes if hasattr(loader.dataset, 'classes') else {}
-    for cls_idx in sorted(result["class_total"].keys()):
-        cls_name = idx_to_class[cls_idx] if idx_to_class else str(cls_idx)
-        top1_cls = 100.0 * result["class_correct_top1"].get(cls_idx, 0) / result["class_total"][cls_idx]
-        top5_cls = 100.0 * result["class_correct_top5"].get(cls_idx, 0) / result["class_total"][cls_idx]
-        print(f"  Class {cls_name:30s} | Top-1: {top1_cls:5.2f}% | Top-5: {top5_cls:5.2f}%")
+        # Print per-class stats: percentage of correctly classified top1/top5 samples per class
+        print(f"\n[{mode}] Per-Class Accuracy Report:")
+        idx_to_class = loader.dataset.classes if hasattr(loader.dataset, 'classes') else {}
+        for cls_idx in sorted(result["class_total"].keys()):
+            cls_name = idx_to_class[cls_idx] if idx_to_class else str(cls_idx)
+            top1_cls = 100.0 * result["class_correct_top1"].get(cls_idx, 0) / result["class_total"][cls_idx]
+            top5_cls = 100.0 * result["class_correct_top5"].get(cls_idx, 0) / result["class_total"][cls_idx]
+            print(f"  Class {cls_name:30s} | Top-1: {top1_cls:5.2f}% | Top-5: {top5_cls:5.2f}%")
 
-    # Logs values to tensorBoard
-    writer.add_scalar(f"{mode}/Loss", result["loss"], epoch)
-    writer.add_scalar(f"{mode}/Top1", result["top1"], epoch)
-    writer.add_scalar(f"{mode}/Top5", result["top5"], epoch)
-    print(f"Average stats: [{mode}] Epoch {epoch+1}: Loss={result['loss']:.3f}, Top1={result['top1']:.2f}, Top5={result['top5']:.2f}")
+        # Logs values to tensorBoard
+        writer.add_scalar(f"{mode}/Loss", result["loss"], epoch)
+        writer.add_scalar(f"{mode}/Top1", result["top1"], epoch)
+        writer.add_scalar(f"{mode}/Top5", result["top5"], epoch)
+        print(f"Average stats: [{mode}] Epoch {epoch+1}: Loss={result['loss']:.3f}, Top1={result['top1']:.2f}, Top5={result['top5']:.2f}")
 
     # Alignment metrics
     if concept_ds:
@@ -1046,7 +1099,7 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
     
     # clear_all_activation_masks(model)
 
-    return result["top1"]
+    return result
 
 
 # Save + Resume
