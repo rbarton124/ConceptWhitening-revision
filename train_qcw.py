@@ -84,6 +84,8 @@ parser.add_argument("--use_free", action="store_true", help="Enable free unlabel
 parser.add_argument("--mask_concepts", help="Concepts to mask, usually the subconcepts of a hl concept")
 parser.add_argument("--bird_name", help="name of bird to test concept masking on e.g. Acadian_Flycatcher")
 parser.add_argument("--json_path", default="", help="path to the json file listing all nonpresent concepts of all birds")
+parser.add_argument("--bird_to_class_json", default="", help="path to the json file that maps bird name to the class index")
+parser.add_argument("--class_to_bird_name", default="", help="path to the json file that maps the class index to bird name")
 
 args = parser.parse_args()
 
@@ -410,7 +412,12 @@ def adjust_lr(optimizer, epoch, args):
         g["lr"] = new_lr
     return new_lr
 
-def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer):
+with open(args.class_to_bird_name, "r") as f:
+    class_to_bird_name = json.load(f)
+
+class_to_bird_name = {int(k): v for k, v in class_to_bird_name.items()}
+
+def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer, class_to_bird_name):
     model.train()
     criterion = nn.CrossEntropyLoss().cuda()
 
@@ -425,64 +432,86 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
 
     for i, (imgs, lbls) in pbar:
         iteration = epoch * len(train_loader) + i
-        imgs, lbls = imgs.cuda(), lbls.cuda()
 
-        # TODO: try adding masking during training
+        batch_size = imgs.size(0)
+        imgs = imgs.cuda()
+        lbls = lbls.cuda()
 
-        # classification forward/backward
-        outputs = model(imgs)
-        loss = criterion(outputs, lbls)
         optimizer.zero_grad()
-        loss.backward()
+        total_loss = 0.0
+
+        # ---- Per-image masking loop ----
+        for j in range(batch_size):
+            img = imgs[j].unsqueeze(0)  # shape [1,C,H,W]
+            lbl = lbls[j].unsqueeze(0)  # shape [1]
+
+            if args.mask_concepts == "all_nonpresent":
+                bird_name = class_to_bird_name[int(lbl.item())]
+                masks = mask_concepts(
+                    model,
+                    concept_ds,
+                    names_to_mask="all_nonpresent",
+                    mask_value=0.0,
+                    default_value=1.0,
+                    bird_name=bird_name,
+                    json_path=args.json_path
+                )
+                apply_per_layer_activation_masks(model, masks)
+                print(f"applied activation mask on {bird_name}")
+
+            # Forward + accumulate loss
+            output = model(img)
+            loss = criterion(output, lbl)
+            (loss / batch_size).backward()  # scale down since we accumulate
+
+            total_loss += loss.item()
+
+            if args.mask_concepts == "all_nonpresent":
+                clear_all_activation_masks(model)
+
         optimizer.step()
 
-        # Update classification metrics
-        prec1, prec5 = accuracy_topk(outputs, lbls, (1, 5))
-        losses.update(loss.item(), imgs.size(0))
-        top1.update(prec1, imgs.size(0))
-        top5.update(prec5, imgs.size(0))
+        # ---- Metrics (on full batch output) ----
+        # For reporting metrics, you might want a no-mask forward for whole batch
+        with torch.no_grad():
+            outputs_full = model(imgs)
+            prec1, prec5 = accuracy_topk(outputs_full, lbls, (1, 5))
+        losses.update(total_loss / batch_size, batch_size)
+        top1.update(prec1, batch_size)
+        top5.update(prec5, batch_size)
 
-        # concept alignment
-        if (args.cw_align_freq is not None 
-            and (i + 1) % args.cw_align_freq == 0 
+        # ---- Alignment metrics (unchanged) ----
+        if (args.cw_align_freq is not None
+            and (i + 1) % args.cw_align_freq == 0
             and len(concept_loaders) > 1):
-            
             alignment_metrics = align_concepts(
                 model,
-                concept_loaders[1:],  # sub-concept loaders
+                concept_loaders[1:],
                 concept_ds,
                 args.batches_per_concept,
                 args.cw_lambda
             )
+            writer.add_scalar("CW/Alignment/GlobalTop1", alignment_metrics["global_top1"], iteration)
+            writer.add_scalar("CW/Alignment/SubspaceTop1", alignment_metrics["subspace_top1"], iteration)
+            writer.add_scalar("CW/Alignment/GlobalTop5", alignment_metrics["global_top5"], iteration)
+            writer.add_scalar("CW/Alignment/ConceptLoss", alignment_metrics["concept_loss"], iteration)
+            writer.add_scalar("CW/FreeConcept/AxisConsistency", alignment_metrics["axis_consistency"], iteration)
+            writer.add_scalar("CW/FreeConcept/AxisPurity", alignment_metrics["axis_purity"], iteration)
+            writer.add_scalar("CW/FreeConcept/ActStrengthRatio", alignment_metrics["act_strength_ratio"], iteration)
+            alignment_score.update(
+                0.3 * alignment_metrics["global_top5"] +
+                0.65 * alignment_metrics["subspace_top1"] +
+                0.05 * alignment_metrics["global_top1"]
+            )
+            concept_loss = alignment_metrics["concept_loss"]
 
-            # get alignment metrics
-            global_top1   = alignment_metrics["global_top1"]
-            subspace_top1 = alignment_metrics["subspace_top1"]
-            global_top5   = alignment_metrics["global_top5"]
-            concept_loss  = alignment_metrics["concept_loss"]
-            axis_consistency = alignment_metrics["axis_consistency"]
-            axis_purity = alignment_metrics["axis_purity"]
-            act_strength_ratio = alignment_metrics["act_strength_ratio"]
-
-            # log to tensorboard
-            writer.add_scalar("CW/Alignment/GlobalTop1",   global_top1,   iteration)
-            writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
-            writer.add_scalar("CW/Alignment/GlobalTop5",   global_top5,   iteration)
-            writer.add_scalar("CW/Alignment/ConceptLoss",  concept_loss,  iteration)
-            writer.add_scalar("CW/FreeConcept/AxisConsistency", axis_consistency, iteration)
-            writer.add_scalar("CW/FreeConcept/AxisPurity", axis_purity,  iteration)
-            writer.add_scalar("CW/FreeConcept/ActStrengthRatio", act_strength_ratio, iteration)
-
-            alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
-
-        # update progress bar
         postfix_dict = {
             "Loss": f"{losses.avg:.3f}",
             "Top1": f"{top1.avg:.2f}",
             "Top5": f"{top5.avg:.2f}"
         }
         if not args.vanilla_pretrain:
-            postfix_dict["Align"]  = f"{alignment_score.avg:.2f}"
+            postfix_dict["Align"] = f"{alignment_score.avg:.2f}"
             postfix_dict["CWLoss"] = f"{concept_loss:.2f}"
         pbar.set_postfix(postfix_dict)
 
@@ -994,19 +1023,53 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
             "class_total": dict(class_total)
         }
 
-    def run_eval():
+    def run_eval(bird):
         all_outs = []
         all_lbls = []
 
         with torch.no_grad():
             for imgs, lbls, *_ in loader:
+                target_class = bird_to_class_map[bird]
+                target_class_mask = lbls == target_class
+
                 imgs, lbls = imgs.cuda(), lbls.cuda()
+                target_imgs = imgs[target_class_mask]
+                target_lbls = lbls[target_class_mask]
+                if target_imgs.shape[0] == 0 or target_lbls.shape[0] == 0:
+                    continue
+
                 outs = model(imgs)
                 all_outs.append(outs)
                 all_lbls.append(lbls)
 
         if not all_outs:
             return None
+
+        outs = torch.cat(all_outs)
+        lbls = torch.cat(all_lbls)
+        return outs, lbls
+   
+    # Handle masking
+    if concept_ds and concepts_to_mask:
+        if args.mask_concepts == "all_nonpresent" and args.bird_name == "all":
+            with open(args.json_path, "r") as f:
+                all_nonpresent = json.load(f)
+            with open(args.bird_to_class_json, "r") as f:
+                bird_to_class_map = json.load(f)
+        
+        all_outs = []
+        all_lbls = []
+
+        for bird in sorted(all_nonpresent.keys()):
+            print(f"\n[Validate] Evaluating bird: {bird}")
+            masks = mask_concepts(model, concept_ds, "all_nonpresent", bird_name=bird, json_path=args.json_path)
+            apply_per_layer_activation_masks(model, masks)
+
+            new_outs, new_lbls = run_eval(bird)
+            all_outs.append(new_outs)
+            all_lbls.append(new_lbls)
+
+            clear_all_activation_masks(model)
 
         outs = torch.cat(all_outs)
         lbls = torch.cat(all_lbls)
@@ -1017,6 +1080,8 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
         _, pred_top5 = outs.topk(5, dim=1, largest=True, sorted=True)
         correct_top1 = (pred_top5[:, 0] == lbls).cpu()
         correct_top5 = torch.tensor([lbls[i] in pred_top5[i] for i in range(len(lbls))]).cpu()
+        overall_top1_acc = correct_top1.float().mean().item() * 100
+        overall_top5_acc = correct_top5.float().mean().item() * 100
 
         per_class_data = defaultdict(lambda: {"loss": [], "top1": [], "top5": []})
         for i in range(len(lbls)):
@@ -1034,56 +1099,48 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
             for k, v in per_class_data.items()
         }
 
-        return {
-            "avg_loss": avg_loss,
-            "per_class": per_class_result,
-        }
-   
-    # Handle masking
-    if concept_ds and concepts_to_mask:
-        if args.mask_concepts == "all_nonpresent" and args.bird_name == "all":
-            with open(args.json_path, "r") as f:
-                all_nonpresent = json.load(f)
+        print(f"\n[{mode}] Per-Class Accuracy Report:")
+        for cls, stats in sorted(per_class_result.items()):
+            print(f"Class {cls} | Average loss: {stats['avg_loss']:.2f} | Top-1: {stats['top1']:.2f}% | Top-5: {stats['top5']:.2f}%")
 
-        for bird in sorted(all_nonpresent.keys()):
-            print(f"\n[Validate] Evaluating bird: {bird}")
-            masks = mask_concepts(model, concept_ds, "all_nonpresent", bird_name=bird, json_path=args.json_path)
-            apply_per_layer_activation_masks(model, masks)
+        print(f"\n[Val] Average Loss: {avg_loss:.4f}")
+        print(f"[Val] Overall Top-1 Accuracy: {overall_top1_acc:.2f}%")
+        print(f"[Val] Overall Top-5 Accuracy: {overall_top5_acc:.2f}%")
 
-            result = run_eval()
-            per_class_result = result["per_class"]
-            avg_loss = result["avg_loss"]
+        result = per_class_result
 
-            clear_all_activation_masks(model)
-
-            print(f"[{mode}] Bird: {bird} | Avg Loss={avg_loss:.3f}")
-            print(f"Per-class metrics for {bird} (Top5 shown):")
-            for cls in sorted(per_class_result):
-                stats = per_class_result[cls]
-                print(f"  Class {cls:03d} | Loss: {stats['avg_loss']:.3f} | Top1: {stats['top1']:.2f}% | Top5: {stats['top5']:.2f}%")
-
-        else:
-            masks = mask_concepts(model, concept_ds, args.mask_concepts, bird_name=args.bird_name, json_path=args.json_path)
-            apply_per_layer_activation_masks(model, masks)
-    
     else:
         print(f"Running val with no masks...")
         result = run_eval_over_entire_val_set()
 
-        # Print per-class stats: percentage of correctly classified top1/top5 samples per class
-        print(f"\n[{mode}] Per-Class Accuracy Report:")
-        idx_to_class = loader.dataset.classes if hasattr(loader.dataset, 'classes') else {}
-        for cls_idx in sorted(result["class_total"].keys()):
-            cls_name = idx_to_class[cls_idx] if idx_to_class else str(cls_idx)
-            top1_cls = 100.0 * result["class_correct_top1"].get(cls_idx, 0) / result["class_total"][cls_idx]
-            top5_cls = 100.0 * result["class_correct_top5"].get(cls_idx, 0) / result["class_total"][cls_idx]
-            print(f"  Class {cls_name:30s} | Top-1: {top1_cls:5.2f}% | Top-5: {top5_cls:5.2f}%")
+        # Overall stats
+        overall_loss = result["loss"]
+        overall_top1 = result["top1"]
+        overall_top5 = result["top5"]
 
-        # Logs values to tensorBoard
-        writer.add_scalar(f"{mode}/Loss", result["loss"], epoch)
-        writer.add_scalar(f"{mode}/Top1", result["top1"], epoch)
-        writer.add_scalar(f"{mode}/Top5", result["top5"], epoch)
-        print(f"Average stats: [{mode}] Epoch {epoch+1}: Loss={result['loss']:.3f}, Top1={result['top1']:.2f}, Top5={result['top5']:.2f}")
+        # Per-class stats
+        class_correct_top1 = result["class_correct_top1"]
+        class_correct_top5 = result["class_correct_top5"]
+        class_total = result["class_total"]
+
+        per_class_result = {}
+        for cls, total in class_total.items():
+            if total > 0:
+                top1_acc = (class_correct_top1.get(cls, 0) / total) * 100.0
+                top5_acc = (class_correct_top5.get(cls, 0) / total) * 100.0
+                per_class_result[cls] = {
+                    "top1": top1_acc,
+                    "top5": top5_acc
+                }
+
+        # Print in comparable style
+        print("\n[Val] Per-Class Accuracy Report:")
+        for cls, stats in per_class_result.items():
+            print(f"Class {cls} | Top-1: {stats['top1']:.2f}% | Top-5: {stats['top5']:.2f}%")
+
+        print(f"\n[Val] Average Loss: {overall_loss:.4f}")
+        print(f"[Val] Overall Top-1 Accuracy: {overall_top1:.2f}%")
+        print(f"[Val] Overall Top-5 Accuracy: {overall_top5:.2f}%")
 
     # Alignment metrics
     if concept_ds:
@@ -1096,11 +1153,8 @@ def validate(loader, model, epoch, writer, mode="Val", args=None, concept_ds=Non
         print("[Alignment metrics]")
         for k, v in alignment_metrics.items():
             print(f" {k}: {v:.4f}")
-    
-    # clear_all_activation_masks(model)
 
     return result
-
 
 # Save + Resume
 def save_checkpoint(state, is_best, prefix, outdir=args.checkpoint_dir):
@@ -1125,12 +1179,12 @@ def main():
         lr_now = adjust_lr(optimizer, epoch, args)
         writer.add_scalar("LR", lr_now, epoch)
 
-        train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer)
+        train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, writer, class_to_bird_name)
         val_result = validate(val_loader, model, epoch, writer, mode="Val", args=args, concept_ds=concept_ds, concepts_to_mask=args.mask_concepts)
         if isinstance(val_result, dict):
-            val_acc = sum(res["top1"] for res in val_result.values()) / len(val_result) # take average top1
+            val_acc = sum(v["top1"] for v in val_result.values()) / len(val_result)
         else:
-            val_acc = val_result
+            val_acc = val_result['top1']
 
         is_best = (val_acc > best_acc)
         best_acc = max(val_acc, best_acc)
