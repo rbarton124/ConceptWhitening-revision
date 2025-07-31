@@ -466,19 +466,18 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
 
             total_loss += loss.item()
 
-            if args.mask_concepts == "all_nonpresent":
-                clear_all_activation_masks(model)
-
         optimizer.step()
 
         # ---- Metrics (on full batch output) ----
-        # For reporting metrics, you might want a no-mask forward for whole batch
         with torch.no_grad():
             outputs_full = model(imgs)
             prec1, prec5 = accuracy_topk(outputs_full, lbls, (1, 5))
         losses.update(total_loss / batch_size, batch_size)
         top1.update(prec1, batch_size)
         top5.update(prec5, batch_size)
+        # clear mask after updating based on metrics
+        if args.mask_concepts == "all_nonpresent":
+            clear_all_activation_masks(model)
 
         # ---- Alignment metrics (unchanged) ----
         if (args.cw_align_freq is not None
