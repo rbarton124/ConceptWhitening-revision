@@ -19,7 +19,7 @@ from PIL import ImageFile
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True # allow loading truncated images
 
-from MODELS.model_resnet_qcw import build_resnet_qcw, ResNetQCW, get_last_qcw_layer
+from MODELS.model_resnet_qcw import build_resnet_qcw, ResNetQCW
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
 # Argument Parser
