@@ -32,7 +32,6 @@ TQDM_SMOOTHING = 0.02
 ONE_BATCH_PER_CONCEPT = True  # Only 1 batch per concept loader during alignment
 PIN_MEMORY = True
 
-NUM_CLASSES = 200  # e.g. for CUB or Places
 CW_ALIGN_FREQ = 30  # do concept alignment every N batches
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -52,6 +51,8 @@ parser.add_argument('--act_mode', default='pool_max',
                     help='Activation mode for CW ("mean","max","pos_mean","pool_max").')
 parser.add_argument('--depth', default=18, type=int,
                     help='ResNet depth (18 or 50).')
+parser.add_argument("--dataset", type=str, default="CUB", choices=["CUB", "COCO"],
+                    help="Dataset to use: CUB or COCO (default: CUB)")
 
 parser.add_argument('-j', '--workers', default=4, type=int,
                     help='Number of data loading workers.')
@@ -172,6 +173,13 @@ def build_model(args):
     """Build a ResNet (18 or 50) with or without concept whitening."""
     # Convert whitened_layers to list of ints
     w_layers = [int(x) for x in args.whitened_layers.split(',')] if args.whitened_layers else []
+
+    if args.dataset == "CUB":
+        NUM_CLASSES = 200
+    elif args.dataset == "COCO":
+        NUM_CLASSES = 80
+    else:
+        raise ValueError(f"Unsupported dataset: {args.dataset}")
 
     if len(w_layers) > 0:
         print("[build_model] Creating ResNet_CW.")
@@ -454,10 +462,27 @@ def maybe_resume_checkpoint(args, model, optimizer):
 
         new_sd = {}
         for k, v in state_dict.items():
-            nk = k.replace('module.', '')
-            new_sd[nk] = v
+            nk = k.replace('module.backbone.', 'model.')
+            # Check if this param exists in model and has matching shape
+            if nk in model.state_dict() and v.shape == model.state_dict()[nk].shape:
+                new_sd[nk] = v
+            else:
+                print(f"[Skip] Shape mismatch or unused param: {nk} | ckpt: {v.shape} vs model: {model.state_dict().get(nk, 'N/A').shape if nk in model.state_dict() else 'N/A'}")
 
-        model.load_state_dict(new_sd, strict=False)
+        load_result = model.load_state_dict(new_sd, strict=False)
+
+        load_result = model.load_state_dict(new_sd, strict=False)
+
+        # Inspect what was and wasn't matched
+        if load_result.missing_keys:
+            print("[Warning] Missing keys (in model but not in checkpoint):")
+            for k in load_result.missing_keys:
+                print("  ", k)
+
+        if load_result.unexpected_keys:
+            print("[Warning] Unexpected keys (in checkpoint but not in model):")
+            for k in load_result.unexpected_keys:
+                print("  ", k)
 
         if not args.only_load_weights:
             start_epoch = checkpoint.get('epoch', 0)

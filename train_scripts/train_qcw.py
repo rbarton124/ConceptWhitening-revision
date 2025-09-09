@@ -31,7 +31,7 @@ parser.add_argument("--concept_dir", required=True, help="Path to concept datase
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
-parser.add_argument("--dataset", type=str, default="CUB", choices=["CUB", "COCO"], help="Dataset to use: CUB or COCO (default: CUB)")
+parser.add_argument("--dataset", type=str, default="CUB", choices=["CUB", "COCO", "Places365"], help="Dataset to use: CUB, COCO, or Places365 (default: CUB)")
 # Model hyperparams
 parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--depth", type=int, default=18, help="ResNet depth (18 or 50).")
@@ -75,6 +75,8 @@ if args.dataset == "CUB":
     NUM_CLASSES = 200
 elif args.dataset == "COCO":
     NUM_CLASSES = 80
+elif args.dataset == "Places365":
+    NUM_CLASSES = 365
 else:
     raise ValueError(f"Unsupported dataset: {args.dataset}")
 
