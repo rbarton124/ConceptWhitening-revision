@@ -38,9 +38,13 @@ class ConceptDataset(Dataset):
         self.transform = transform
         self.crop_mode = crop_mode.lower().strip()
 
-        # Load bounding boxes
-        with open(bboxes_file, 'r') as f:
-            self.bboxes_dict = json.load(f)
+        # ✅ Minimal change: handle missing bboxes_file
+        if bboxes_file is not None and os.path.exists(bboxes_file):
+            with open(bboxes_file, 'r') as f:
+                self.bboxes_dict = json.load(f)
+        else:
+            print(f"[ConceptDataset] WARNING: {bboxes_file} not found. Defaulting to full-image boxes.")
+            self.bboxes_dict = {}
 
         # Convert HL filter to set for easy membership checking
         self.high_level_filter = set([hl.lower() for hl in high_level_filter])
@@ -119,7 +123,6 @@ class ConceptDataset(Dataset):
                         bbox = self.bboxes_dict.get(rel_path, None)
                         if bbox is None:
                             print(f"[ConceptDataset]    Bounding box for {rel_path} not found in bboxes.json.")
-                            bbox = [0,0,0,0]
 
                         # store sample
                         self.samples.append((full_path, bbox, hl_lower, sc_folder))
@@ -152,6 +155,11 @@ class ConceptDataset(Dataset):
 
         # Load image
         img = Image.open(img_path).convert("RGB")
+
+        # ✅ Minimal change: fallback to full-image box
+        if box_coords is None:
+            box_coords = [0, 0, img.width, img.height]
+
         x1, y1, x2, y2 = box_coords
 
         # Crop / redact / blur logic
