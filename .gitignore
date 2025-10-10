@@ -89,3 +89,5 @@ new_checkpoints/
 old_checkpoints/
 figs/
 figure_scripts/
+experiments/
+readmes/

@@ -125,21 +125,41 @@ class ConceptDataset(Dataset):
 
     def _build_indices(self):
         """
-        For each HL concept, we have a set of sub-concept names. We sort them,
-        assign integer indices, store in self.sc2idx, and then store the resulting
-        index list in self._subspace_mapping[hl].
+        For each HL concept, assign CONTIGUOUS subconcept indices.
+        This ensures subspaces are sequential blocks in the latent space.
+        
+        E.g., beak: indices 0-4, wing: indices 5-12, tail: indices 13-15
+        
+        This is critical for QCW semantics and correct metric computation.
         """
         sorted_hls = sorted(self._subspace_mapping.keys())
+        global_sc_idx = 0  # Global counter for contiguous assignment
+        
+        print("\n========== SUBSPACE INDEX ASSIGNMENT ==========")
         for i, hl_name in enumerate(sorted_hls):
             self.hl2idx[hl_name] = i
             sc_names_list = sorted(self._subspace_mapping[hl_name])
-            sc_indices = []
+            
+            # Assign contiguous indices for this subspace
+            local_indices = []
+            subspace_start = global_sc_idx
+            
             for sc_name in sc_names_list:
-                if sc_name not in self.sc2idx:
-                    self.sc2idx[sc_name] = len(self.sc2idx)
-                sc_indices.append(self.sc2idx[sc_name])
-            # Now replace the set with an ordered list of indices
-            self._subspace_mapping[hl_name] = sc_indices
+                self.sc2idx[sc_name] = global_sc_idx
+                local_indices.append(global_sc_idx)
+                global_sc_idx += 1
+            
+            # Replace the set with ordered list of CONTIGUOUS indices
+            self._subspace_mapping[hl_name] = local_indices
+            
+            # Log for verification
+            subspace_end = global_sc_idx - 1
+            is_free_str = " (has FREE)" if any(self.is_free_subconcept_name(sc) for sc in sc_names_list) else ""
+            print(f"  HL '{hl_name}': indices [{subspace_start:3d}-{subspace_end:3d}] "
+                  f"({len(local_indices)} subconcepts){is_free_str}")
+        
+        print(f"Total subconcepts: {global_sc_idx}")
+        print("=" * 48 + "\n")
 
     def __len__(self):
         return len(self.samples)

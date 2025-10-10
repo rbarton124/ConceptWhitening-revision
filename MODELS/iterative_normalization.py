@@ -432,3 +432,10 @@ class IterNormRotation(nn.Module):
         Called to set cw_lambda for subspace accumulation pass.
         """
         self.cw_lambda = lambda_
+    
+    def reset_counters(self):
+        """
+        Reset gradient accumulation counters (called between alignment steps).
+        """
+        self.sum_G.zero_()
+        self.counter.fill_(0.001)

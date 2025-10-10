@@ -21,6 +21,7 @@ from tqdm import tqdm
 from PIL import ImageFile
 
 from types import SimpleNamespace
+from contextlib import contextmanager
 
 from MODELS.factory_qcw import build_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
@@ -67,9 +68,21 @@ parser.add_argument("--workers", type=int, default=4, help="Number of data loadi
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
 parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
 # Feature toggles
-parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.") # used to work, isnt working lately TODO: ACTUALLY FIX [issue was subspace null mapping issue]
-parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet TODO: FIX
-parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet TODO: FIX
+parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.")
+parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.")
+parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.")
+# Alignment Nudge hyperparameters
+parser.add_argument("--enable_nudge", action="store_true", help="Enable differentiable concept alignment nudge at alignment steps")
+parser.add_argument("--nudge_alpha", type=float, default=1e-3, help="Weight for CW alignment nudge loss (applied at alignment steps)")
+parser.add_argument("--nudge_margin", type=float, default=0.2, help="Margin for labeled concept separation within subspace")
+parser.add_argument("--nudge_tau", type=float, default=0.1, help="Temperature for soft winner-takes-all (lower=harder)")
+parser.add_argument("--nudge_min_activation", type=float, default=0.0, help="Minimum activation threshold for target concepts (0=disabled)")
+# Label-free regularization
+parser.add_argument("--use_block_diag", action="store_true", help="Enable block-diagonal covariance penalty on CE batches")
+parser.add_argument("--block_diag_weight", type=float, default=1e-4, help="Weight for block-diagonal penalty")
+# Advanced options
+parser.add_argument("--anneal_nudge_alpha", action="store_true", help="Anneal nudge_alpha inversely to learning rate")
+parser.add_argument("--nudge_grad_clip", type=float, default=5.0, help="Gradient clipping max norm for nudge step")
 
 args = parser.parse_args()
 
@@ -318,6 +331,28 @@ model = build_qcw(
     vanilla_pretrain=args.vanilla_pretrain
 )
 
+cross_subspace_mask = None
+if not args.vanilla_pretrain and args.use_block_diag:
+    if hasattr(model, 'cw_layers') and model.cw_layers:
+        last_cw = model.cw_layers[-1]
+        num_channels = last_cw.num_channels
+        
+        print(f"\n[Block-Diag] Building cross-subspace mask for {num_channels} channels...")
+        cross_subspace_mask = build_cross_subspace_mask(num_channels, subspace_mapping)
+        
+        # Log mask statistics
+        total_elements = num_channels ** 2
+        cross_elements = cross_subspace_mask.sum().item()
+        block_elements = total_elements - cross_elements
+        print(f"[Block-Diag] Cross-subspace pairs: {int(cross_elements)} / {total_elements} "
+              f"({100*cross_elements/total_elements:.1f}%)")
+        print(f"[Block-Diag] Within-subspace pairs: {int(block_elements)} / {total_elements} "
+              f"({100*block_elements/total_elements:.1f}%)")
+        print(f"[Block-Diag] Penalty weight: {args.block_diag_weight}\n")
+    else:
+        print("[Warning] --use_block_diag=True but no CW layers found. Disabling block-diag penalty.")
+        args.use_block_diag = False
+
 def maybe_resume_checkpoint(model, optimizer, args):
     """
     Resume from checkpoint, handling ResNet, DenseNet, VGG, or QCW formats.
@@ -403,6 +438,86 @@ optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, we
 start_epoch, best_prec = maybe_resume_checkpoint(model, optimizer, args)
 model = nn.DataParallel(model).cuda()
 
+# Move cross-subspace mask to CUDA if it was built
+if cross_subspace_mask is not None:
+    cross_subspace_mask = cross_subspace_mask.cuda()
+    print(f"[Block-Diag] Mask moved to CUDA")
+
+# Pre-Training Diagnostics and Validation
+print("\n" + "="*70)
+print(" "*20 + "PRE-TRAINING DIAGNOSTICS")
+print("="*70)
+
+if not args.vanilla_pretrain and model.module.cw_layers:
+    print(f"\n[QCW Layers] Found {len(model.module.cw_layers)} QCW layer(s)")
+    for idx, cw in enumerate(model.module.cw_layers):
+        print(f"  Layer {idx}: {cw.num_channels} channels, "
+              f"activation_mode={cw.activation_mode}, "
+              f"cw_lambda={cw.cw_lambda:.4f}")
+        print(f"    Subspace map: {list(cw.subspace_map.keys())}")
+        
+        # Check orthogonality
+        Q = cw.running_rot[0]  # [C, C]
+        orth_error = torch.norm(Q.t() @ Q - torch.eye(Q.size(0), device=Q.device)).item()
+        print(f"    Initial orthogonality error: {orth_error:.2e} (should be ~0)")
+    
+    print(f"\n[Nudge Config]")
+    print(f"  Enabled: {args.enable_nudge}")
+    if args.enable_nudge:
+        print(f"  Alpha: {args.nudge_alpha:.2e}")
+        print(f"  Margin: {args.nudge_margin}")
+        print(f"  Tau: {args.nudge_tau}")
+        print(f"  Min activation: {args.nudge_min_activation}")
+        print(f"  Grad clip: {args.nudge_grad_clip}")
+        print(f"  Annealing: {args.anneal_nudge_alpha}")
+    
+    print(f"\n[Block-Diag Config]")
+    print(f"  Enabled: {args.use_block_diag}")
+    if args.use_block_diag:
+        print(f"  Weight: {args.block_diag_weight:.2e}")
+        print(f"  Mask shape: {cross_subspace_mask.shape if cross_subspace_mask is not None else 'N/A'}")
+    
+    print(f"\n[Alignment Config]")
+    print(f"  Frequency: every {args.cw_align_freq} batches")
+    print(f"  Batches per concept: {args.batches_per_concept}")
+    print(f"  Lambda (free concepts): {args.cw_lambda}")
+    
+    # Test hook functionality with a dummy forward
+    print(f"\n[Hook Test] Testing get_last_qcw_axis_scores with dummy batch...")
+    try:
+        dummy_imgs = torch.randn(4, 3, 224, 224).cuda()
+        with torch.no_grad():
+            a_test = get_last_qcw_axis_scores(model, dummy_imgs, reduce_mode="mean")
+        print(f"  ✓ Hook successful! Output shape: {a_test.shape} (expected [4, {cw.num_channels}])")
+        print(f"  ✓ Activation range: [{a_test.min():.3f}, {a_test.max():.3f}]")
+    except Exception as e:
+        print(f"  ✗ Hook test failed: {e}")
+        print(f"  This may cause issues during training. Please investigate.")
+    
+    # Test frozen_norm_stats
+    print(f"\n[Frozen Stats Test] Testing frozen_norm_stats context manager...")
+    try:
+        if model.module.cw_layers:
+            cw = model.module.cw_layers[0]
+            mean_before = cw.running_mean.clone()
+            momentum_before = cw.momentum
+            
+            with frozen_norm_stats(model):
+                _ = model(dummy_imgs)
+                momentum_during = cw.momentum
+            
+            mean_after = cw.running_mean
+            momentum_after = cw.momentum
+            
+            mean_changed = not torch.allclose(mean_before, mean_after)
+            print(f"  Momentum: {momentum_before:.3f} → {momentum_during:.3f} (during) → {momentum_after:.3f} (after)")
+            print(f"  Running mean changed: {mean_changed} (should be False)")
+            print(f"  ✓ frozen_norm_stats working correctly!" if not mean_changed else "  ✗ Stats were updated!")
+    except Exception as e:
+        print(f"  ✗ Frozen stats test failed: {e}")
+
+print("="*70 + "\n")
+
 # Train + Align
 def adjust_lr(optimizer, epoch, args):
     new_lr = args.lr * (args.lr_decay_factor ** (epoch // args.lr_decay_epoch))
@@ -427,33 +542,71 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         iteration = epoch * len(train_loader) + i
         imgs, lbls = imgs.cuda(), lbls.cuda()
 
-        # classification forward/backward
-        outputs = model(imgs)
-        loss = criterion(outputs, lbls)
+        # ========================================
+        # Classification forward/backward/step
+        # ========================================
         optimizer.zero_grad()
-        loss.backward()
+        outputs = model(imgs)
+        ce_loss = criterion(outputs, lbls)
+        
+        # Optional block-diagonal penalty
+        total_loss = ce_loss
+        if (hasattr(args, 'use_block_diag') and args.use_block_diag and 
+            'cross_subspace_mask' in globals() and cross_subspace_mask is not None):
+            try:
+                a_ce = get_last_qcw_axis_scores(model, imgs, reduce_mode="mean")
+                bd_penalty = block_diag_penalty_fast(a_ce, cross_subspace_mask)
+                total_loss = ce_loss + args.block_diag_weight * bd_penalty
+                
+                # Log occasionally (every 20 iterations)
+                if i % 20 == 0:
+                    writer.add_scalar("CW/BlockDiag/Penalty", bd_penalty.item(), iteration)
+                    writer.add_scalar("CW/BlockDiag/WeightedPenalty", 
+                                    (args.block_diag_weight * bd_penalty).item(), iteration)
+            except Exception as e:
+                # If block-diag fails, fall back to just CE loss
+                print(f"[Warning] Block-diag penalty failed: {e}")
+                total_loss = ce_loss
+        
+        total_loss.backward()
         optimizer.step()
 
         # Update classification metrics
         prec1, prec5 = accuracy_topk(outputs, lbls, (1, 5))
-        losses.update(loss.item(), imgs.size(0))
+        losses.update(total_loss.item(), imgs.size(0))
         top1.update(prec1, imgs.size(0))
         top5.update(prec5, imgs.size(0))
 
-        # concept alignment
+        # ========================================
+        # Concept Alignment (with optional nudge)
+        # ========================================
         if (args.cw_align_freq is not None 
             and (i + 1) % args.cw_align_freq == 0 
             and len(concept_loaders) > 1):
             
+            # Compute effective nudge_alpha (with optional annealing)
+            effective_nudge_alpha = args.nudge_alpha
+            if args.anneal_nudge_alpha:
+                current_lr = optimizer.param_groups[0]['lr']
+                lr_ratio = args.lr / current_lr if current_lr > 0 else 1.0
+                effective_nudge_alpha = args.nudge_alpha * (lr_ratio ** 0.5)
+            
             alignment_metrics = align_concepts(
                 model,
+                optimizer,  # Pass optimizer for nudge step
                 concept_loaders[1:],  # sub-concept loaders
                 concept_ds,
                 args.batches_per_concept,
-                args.cw_lambda
+                args.cw_lambda,
+                enable_nudge=args.enable_nudge,
+                nudge_alpha=effective_nudge_alpha,
+                nudge_margin=args.nudge_margin,
+                nudge_tau=args.nudge_tau,
+                nudge_min_activation=args.nudge_min_activation,
+                nudge_grad_clip=args.nudge_grad_clip
             )
 
-            # get alignment metrics
+            # Extract metrics
             global_top1   = alignment_metrics["global_top1"]
             subspace_top1 = alignment_metrics["subspace_top1"]
             global_top5   = alignment_metrics["global_top5"]
@@ -461,8 +614,11 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             axis_consistency = alignment_metrics["axis_consistency"]
             axis_purity = alignment_metrics["axis_purity"]
             act_strength_ratio = alignment_metrics["act_strength_ratio"]
+            labeled_nudge_loss = alignment_metrics["labeled_nudge_loss"]
+            free_nudge_loss = alignment_metrics["free_nudge_loss"]
+            total_nudge_loss = alignment_metrics["total_nudge_loss"]
 
-            # log to tensorboard
+            # Log to tensorboard
             writer.add_scalar("CW/Alignment/GlobalTop1",   global_top1,   iteration)
             writer.add_scalar("CW/Alignment/SubspaceTop1", subspace_top1, iteration)
             writer.add_scalar("CW/Alignment/GlobalTop5",   global_top5,   iteration)
@@ -470,8 +626,16 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             writer.add_scalar("CW/FreeConcept/AxisConsistency", axis_consistency, iteration)
             writer.add_scalar("CW/FreeConcept/AxisPurity", axis_purity,  iteration)
             writer.add_scalar("CW/FreeConcept/ActStrengthRatio", act_strength_ratio, iteration)
+            
+            # Log nudge losses
+            if args.enable_nudge:
+                writer.add_scalar("CW/Nudge/LabeledLoss", labeled_nudge_loss, iteration)
+                writer.add_scalar("CW/Nudge/FreeLoss", free_nudge_loss, iteration)
+                writer.add_scalar("CW/Nudge/TotalLoss", total_nudge_loss, iteration)
+                writer.add_scalar("CW/Nudge/EffectiveAlpha", effective_nudge_alpha, iteration)
 
-            alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
+            # Updated alignment score (emphasize subspace_top1)
+            alignment_score.update(0.65 * subspace_top1 + 0.30 * global_top5 + 0.05 * axis_consistency)
 
         # update progress bar
         postfix_dict = {
@@ -488,14 +652,17 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
         writer.add_scalar("Train/Top1", top1.val, iteration)
         writer.add_scalar("Train/Top5", top5.val, iteration)
 
-def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_concept, lambda_):
+def align_concepts(model, optimizer, subconcept_loaders, concept_dataset, batches_per_concept, lambda_,
+                   enable_nudge=False, nudge_alpha=1e-3, nudge_margin=0.2, nudge_tau=0.1, 
+                   nudge_min_activation=0.0, nudge_grad_clip=5.0):
     """
-    Two-phase concept alignment:
-      1. Push labeled sub-concepts to their axes
-      2. Apply winner-takes-all for free sub-concepts
-    Then update rotation matrix and compute metrics.
+    Three-phase concept alignment:
+      1. No-grad accumulation for Cayley update (existing)
+      2. Cayley rotation matrix update (existing, FIXED: single update)
+      3. Differentiable alignment nudge with frozen stats (NEW, optional)
+    Then compute metrics.
     
-    Returns metrics dict with alignment scores and concept loss.
+    Returns: metrics dict with alignment scores, concept loss, and nudge losses
     """
     model.eval()
 
@@ -563,38 +730,148 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
 
-    # update rotation matrix
-    model.module.update_rotation_matrix()
-    model.module.change_mode(-1)
-    for cw_layer in model.module.cw_layers:
-        cw_layer.clear_subspace()
-        cw_layer.set_subspace_scaling(1.0)
+
+    # Update rotation matrix (just once now [not sure about this yet])
     model.module.update_rotation_matrix()
     model.module.change_mode(-1)
     for cw_layer in model.module.cw_layers:
         cw_layer.clear_subspace()
         cw_layer.set_subspace_scaling(1.0)
 
-    # get concept loss
+    # Get concept loss from no-grad tracking
     total_cw_loss = 0.0
     for cw_layer in model.module.cw_layers:
         total_cw_loss += cw_layer.get_concept_loss()
     avg_cw_loss = total_cw_loss / max(1, len(model.module.cw_layers))
-
-    # compute all metrics
+    
+    # Differentiable alignment nudge
+    labeled_nudge_loss_val = 0.0
+    free_nudge_loss_val = 0.0
+    total_nudge_loss_val = 0.0
+    
+    if enable_nudge:
+        # Verify QCW layers are in correct state (not accumulating)
+        for cw in model.module.cw_layers:
+            if cw.mode >= 0:
+                print("[ERROR] QCW layer has mode>=0 during nudge! Resetting to -1.")
+                cw.mode = -1
+            if cw.active_subspace is not None:
+                print("[ERROR] QCW layer has active_subspace set during nudge! Clearing.")
+                cw.clear_subspace()
+        
+        model.train()  # Enable autograd
+        optimizer.zero_grad()  # Fresh gradients
+        
+        sc_to_hl = concept_dataset.get_subconcept_to_hl_name_mapping()
+        subspace_map = concept_dataset.subspace_mapping
+        
+        labeled_nudge_loss = torch.tensor(0.0, device=next(model.parameters()).device, requires_grad=True)
+        free_nudge_loss = torch.tensor(0.0, device=next(model.parameters()).device, requires_grad=True)
+        num_labeled_terms = 0
+        num_free_terms = 0
+        
+        with frozen_norm_stats(model):
+            # === Labeled Concepts: Margin Loss ===
+            for hl_name, groups in hl_subconcepts.items():
+                for (sc_label, sc_loader) in groups["labeled"]:
+                    loader_iter = iter(sc_loader)
+                    for _ in range(min(batches_per_concept, len(sc_loader))):
+                        batch_data = next(loader_iter, None)
+                        if not batch_data or not len(batch_data[0]):
+                            break
+                        
+                        c_imgs = batch_data[0].cuda(non_blocking=True)
+                        if c_imgs.size(0) == 0:
+                            continue
+                        
+                        # Get axis scores (differentiable)
+                        a = get_last_qcw_axis_scores(model, c_imgs, reduce_mode="mean")
+                        sc_lbls = torch.tensor([sc_label] * a.size(0), 
+                                              dtype=torch.long, device=a.device)
+                        
+                        loss_lab = labeled_margin_loss(a, sc_lbls, sc_to_hl, subspace_map, 
+                                                       margin=nudge_margin, 
+                                                       min_activation=nudge_min_activation)
+                        labeled_nudge_loss = labeled_nudge_loss + loss_lab
+                        num_labeled_terms += 1
+            
+            # === Free Concepts: Soft Winner-Takes-All ===
+            for hl_name, groups in hl_subconcepts.items():
+                free_list = groups["free"]
+                if not free_list:
+                    continue
+                
+                for (sc_label, sc_loader) in free_list:
+                    loader_iter = iter(sc_loader)
+                    for _ in range(min(batches_per_concept, len(sc_loader))):
+                        batch_data = next(loader_iter, None)
+                        if not batch_data or not len(batch_data[0]):
+                            break
+                        
+                        c_imgs = batch_data[0].cuda(non_blocking=True)
+                        if c_imgs.size(0) == 0:
+                            continue
+                        
+                        # Get axis scores (differentiable)
+                        a = get_last_qcw_axis_scores(model, c_imgs, reduce_mode="mean")
+                        hl_lbls = [hl_name] * a.size(0)
+                        
+                        loss_free = soft_wta_hl_loss(a, hl_lbls, subspace_map, tau=nudge_tau)
+                        free_nudge_loss = free_nudge_loss + loss_free
+                        num_free_terms += 1
+        
+        # Average losses
+        if num_labeled_terms > 0:
+            labeled_nudge_loss = labeled_nudge_loss / float(num_labeled_terms)
+        if num_free_terms > 0:
+            free_nudge_loss = free_nudge_loss / float(num_free_terms)
+        
+        total_nudge_loss = labeled_nudge_loss + free_nudge_loss
+        
+        # Backward and step (only if we computed any losses)
+        if num_labeled_terms + num_free_terms > 0:
+            scaled_loss = nudge_alpha * total_nudge_loss
+            scaled_loss.backward()
+            
+            # Gradient clipping for safety
+            if nudge_grad_clip > 0:
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=nudge_grad_clip)
+            else:
+                grad_norm = sum(p.grad.norm()**2 for p in model.parameters() if p.grad is not None)**0.5
+            
+            # Check for invalid gradients
+            has_invalid = any(
+                p.grad is not None and not torch.isfinite(p.grad).all()
+                for p in model.parameters()
+            )
+            
+            if not has_invalid:
+                optimizer.step()
+            else:
+                print("[Warning] Invalid gradients in CW nudge, skipping optimizer step")
+            
+            optimizer.zero_grad()
+            
+            # Store for logging
+            labeled_nudge_loss_val = labeled_nudge_loss.item() if num_labeled_terms > 0 else 0.0
+            free_nudge_loss_val = free_nudge_loss.item() if num_free_terms > 0 else 0.0
+            total_nudge_loss_val = total_nudge_loss.item()
+        
+        model.eval()
+    
+    # Compute alignment metrics
     metrics = compute_alignment_metrics(
         model, subconcept_loaders, concept_dataset,
         batches_per_concept, label_to_scname
     )
-    return {
-        "global_top1":  metrics["global_top1"],
-        "subspace_top1": metrics["subspace_top1"],
-        "global_top5":  metrics["global_top5"],
-        "concept_loss": avg_cw_loss,
-        "axis_consistency": metrics["axis_consistency"],
-        "axis_purity": metrics["axis_purity"],
-        "act_strength_ratio": metrics["act_strength_ratio"]
-    }
+    
+    # Add nudge losses to metrics
+    metrics["concept_loss"] = avg_cw_loss
+    metrics["labeled_nudge_loss"] = labeled_nudge_loss_val
+    metrics["free_nudge_loss"] = free_nudge_loss_val
+    metrics["total_nudge_loss"] = total_nudge_loss_val
+    
+    return metrics
 
 
 
@@ -852,6 +1129,312 @@ def accuracy_topk(output, target, topk=(1,)):
         c_k = correct[:k].reshape(-1).float().sum(0,keepdim=True)
         res.append((c_k*100.0/batch_size).item())
     return tuple(res)
+
+
+# CW-LOSS INTEGRATION INFRASTRUCTURE
+
+@contextmanager
+def frozen_norm_stats(model):
+    """
+    Context manager that freezes running statistics in BatchNorm and IterNormRotation
+    layers while still allowing gradients to flow for backpropagation.
+    
+    This enables differentiable forward passes on concept data without corrupting
+    the running statistics that were learned on the main classification dataset.
+    
+    Key behaviors:
+    - BatchNorm layers: Set to eval() mode (use running stats, don't update them)
+    - IterNormRotation layers: Set momentum=0.0 (prevents running stat updates)
+    - Gradients: Still flow normally (training=True for autograd)
+    
+    Usage:
+        with frozen_norm_stats(model):
+            outputs = model(concept_images)
+            loss = some_loss(outputs)
+            loss.backward()  # Gradients flow, but stats don't update
+    """
+    # Determine if model is wrapped in DataParallel
+    if isinstance(model, nn.DataParallel):
+        actual_model = model.module
+    else:
+        actual_model = model
+    
+    # Store original training state
+    was_training = model.training
+    
+    # Freeze BatchNorm layers
+    bn_states = []
+    for m in model.modules():
+        if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d, nn.SyncBatchNorm)):
+            bn_states.append((m, m.training))
+            m.eval()  # Use running stats but don't update them
+    
+    # Freeze IterNormRotation layers
+    cw_layers = getattr(actual_model, 'cw_layers', [])
+    saved_momentums = []
+    for cw in cw_layers:
+        saved_momentums.append(cw.momentum)
+        cw.momentum = 0.0  # Prevent running stat updates while keeping training=True
+    
+    try:
+        yield  # Code inside the `with` block runs here
+    finally:
+        # Restore BatchNorm states
+        for m, was_train in bn_states:
+            m.train(was_train)
+        
+        # Restore IterNormRotation momentums
+        for cw, original_momentum in zip(cw_layers, saved_momentums):
+            cw.momentum = original_momentum
+        
+        # Restore overall model training state
+        model.train(was_training)
+
+
+def get_last_qcw_axis_scores(model, imgs, reduce_mode="mean"):
+    """
+    Extract per-axis activation scores from the last QCW layer with DataParallel support.
+    
+    Critical: When using DataParallel, the forward hook fires once PER REPLICA,
+    so we must gather outputs from all replicas and concatenate them.
+    
+    Args:
+        model: QCW model (possibly wrapped in DataParallel)
+        imgs: [B, 3, H, W] input images (already on cuda)
+        reduce_mode: How to reduce spatial dimensions ('mean', 'max', 'pool_max')
+    
+    Returns:
+        a: [B, C] activation scores with gradients attached
+    """
+    if isinstance(model, nn.DataParallel):
+        actual_model = model.module
+    else:
+        actual_model = model
+    
+    if not actual_model.cw_layers:
+        raise ValueError("Model has no QCW layers")
+    
+    last_cw = actual_model.cw_layers[-1]
+    
+    # Hook to capture output (will fire once per replica in DataParallel)
+    captured = []
+    def hook(module, input, output):
+        captured.append(output)
+    
+    handle = last_cw.register_forward_hook(hook)
+    
+    try:
+        outputs = model(imgs)  # Full forward pass
+    finally:
+        handle.remove()
+    
+    if not captured:
+        raise RuntimeError("Failed to capture QCW layer output via hook")
+    
+    # If DataParallel, captured will have one tensor per GPU
+    # We must concatenate them to get the full batch
+    if len(captured) > 1:
+        # Multiple replicas - concatenate
+        feat = torch.cat([t.to(imgs.device) for t in captured], dim=0)
+    else:
+        feat = captured[0]
+    
+    # Verify we got the full batch
+    if feat.size(0) != imgs.size(0):
+        print(f"[Warning] Hook captured {feat.size(0)} samples but expected {imgs.size(0)}. "
+              f"This may indicate a DataParallel gathering issue.")
+    
+    # Reduce spatial dimensions: [B, C, H, W] -> [B, C]
+    if reduce_mode == "mean":
+        a = feat.mean(dim=(2, 3))
+    elif reduce_mode == "max":
+        a = feat.flatten(2).max(dim=2)[0]
+    elif reduce_mode == "pool_max":
+        # Match IterNormRotation._reduce_activation logic
+        pooled, _ = nn.functional.max_pool2d(feat, kernel_size=3, stride=3, return_indices=True)
+        a = pooled.flatten(2).mean(dim=2)
+    else:
+        a = feat.mean(dim=(2, 3))
+    
+    return a  # [B, C] with gradients
+
+
+def labeled_margin_loss(a, sc_labels, sc_to_hl, subspace_map, margin=0.2, min_activation=0.0):
+    """
+    Margin loss: target concept axis should beat competitors in its subspace by `margin`.
+    
+    This encourages clean separation within each high-level concept subspace,
+    matching the QCW objective for labeled subconcepts.
+    
+    Args:
+        a: [B, C] activation scores (from rotated QCW output)
+        sc_labels: [B] or list of target axis indices
+        sc_to_hl: dict mapping subconcept_idx -> high_level_name
+        subspace_map: dict mapping high_level_name -> list of axis indices
+        margin: Minimum gap between target and best competitor (default 0.2)
+        min_activation: Minimum absolute activation for target (0=disabled)
+    
+    Returns:
+        scalar loss (average over batch)
+    """
+    device = a.device
+    loss = torch.tensor(0.0, device=device, requires_grad=True)
+    B, C = a.shape
+    valid_samples = 0
+    
+    for i in range(B):
+        j = int(sc_labels[i])  # Target axis index
+        
+        # Bounds check
+        if j >= C:
+            continue
+        
+        # Get high-level concept and subspace
+        hl_name = sc_to_hl.get(j)
+        if hl_name is None:
+            continue
+        
+        S = subspace_map.get(hl_name, [])
+        if not S or j not in S:
+            continue
+        
+        # Find competitors in same subspace (excluding target)
+        competitors = [k for k in S if k != j and k < C]
+        if not competitors:
+            # Single-axis subspace: only apply min_activation if set
+            if min_activation > 0:
+                loss = loss + torch.clamp(min_activation - a[i, j], min=0.0)
+            valid_samples += 1
+            continue
+        
+        a_target = a[i, j]
+        a_comp = a[i, competitors]
+        max_comp = a_comp.max()
+        
+        # Margin violation: target should beat best competitor by at least `margin`
+        margin_term = torch.clamp(margin + max_comp - a_target, min=0.0)
+        loss = loss + margin_term
+        
+        # Optional: encourage minimum absolute activation
+        if min_activation > 0:
+            min_term = torch.clamp(min_activation - a_target, min=0.0)
+            loss = loss + min_term
+        
+        valid_samples += 1
+    
+    if valid_samples > 0:
+        return loss / float(valid_samples)
+    else:
+        return torch.tensor(0.0, device=device, requires_grad=True)
+
+
+def soft_wta_hl_loss(a, hl_labels, subspace_map, tau=0.1):
+    """
+    Soft winner-takes-all within high-level subspace using LogSumExp.
+    
+    This encourages at least one axis in the subspace to activate strongly,
+    matching the QCW objective for free (unlabeled) subconcepts.
+    
+    Math: Maximizes max_{j in S} a[i,j] via smooth approximation:
+          -tau * log(sum_{j in S} exp(a[i,j] / tau)) ≈ -max_{j in S} a[i,j]
+    
+    Args:
+        a: [B, C] activation scores
+        hl_labels: list of length B with high-level concept names (strings)
+        subspace_map: dict mapping high_level_name -> list of axis indices
+        tau: Temperature for softmax approximation (smaller = harder max, default 0.1)
+    
+    Returns:
+        scalar loss (average over batch)
+    """
+    device = a.device
+    loss = torch.tensor(0.0, device=device, requires_grad=True)
+    B, C = a.shape
+    valid_samples = 0
+    
+    for i in range(B):
+        hl_name = hl_labels[i]
+        S = subspace_map.get(hl_name, [])
+        
+        # Filter to valid indices
+        S_valid = [j for j in S if j < C]
+        if not S_valid:
+            continue
+        
+        # Get activations for this subspace
+        a_S = a[i, S_valid]
+        
+        # LogSumExp: -tau * log(sum(exp(a_S / tau)))
+        # As tau -> 0, this approaches -max(a_S)
+        lse = tau * torch.logsumexp(a_S / tau, dim=0)
+        loss = loss - lse  # Negative because we want to maximize
+        valid_samples += 1
+    
+    if valid_samples > 0:
+        return loss / float(valid_samples)
+    else:
+        return torch.tensor(0.0, device=device, requires_grad=True)
+
+
+def build_cross_subspace_mask(num_channels, subspace_map):
+    """
+    Precompute boolean mask for cross-subspace (i,j) pairs.
+    
+    This mask identifies which pairs of axes belong to DIFFERENT high-level concepts,
+    used for the block-diagonal covariance penalty.
+    
+    Args:
+        num_channels: Total number of channels (C) in the QCW layer
+        subspace_map: dict {hl_name -> [axis_indices]}
+    
+    Returns:
+        [C, C] boolean tensor (True for cross-subspace pairs)
+    """
+    mask = torch.zeros(num_channels, num_channels, dtype=torch.bool)
+    
+    subspaces_list = list(subspace_map.values())
+    
+    # Mark all (i,j) pairs where i and j are in different subspaces
+    for s1_idx, S1 in enumerate(subspaces_list):
+        for s2_idx, S2 in enumerate(subspaces_list):
+            if s1_idx >= s2_idx:  # Skip same subspace and avoid double-counting
+                continue
+            
+            # Mark all cross-subspace pairs
+            for i in S1:
+                for j in S2:
+                    if i < num_channels and j < num_channels:
+                        mask[i, j] = True
+                        mask[j, i] = True  # Symmetric
+    
+    return mask
+
+
+def block_diag_penalty_fast(a, cross_subspace_mask):
+    """
+    Penalize covariance between axes in different subspaces.
+    
+    Encourages the latent space to have block-diagonal covariance structure,
+    where axes within a subspace can correlate but axes across subspaces cannot.
+    
+    Args:
+        a: [B, C] activation scores
+        cross_subspace_mask: [C, C] boolean mask (from build_cross_subspace_mask)
+    
+    Returns:
+        scalar penalty (mean squared cross-subspace covariance)
+    """
+    # Center activations
+    a_centered = a - a.mean(dim=0, keepdim=True)
+    
+    # Compute covariance matrix
+    Sigma = (a_centered.t() @ a_centered) / a.size(0)  # [C, C]
+    
+    # Penalize off-block-diagonal elements
+    penalty = (Sigma[cross_subspace_mask] ** 2).mean()
+    
+    return penalty
+
 
 # Main Loop
 def main():
