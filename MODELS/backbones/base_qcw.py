@@ -25,17 +25,24 @@ class BaseQCW(nn.Module):
                 print(f"Replacing BN layer (global index {g_idx}) with QCW layer. "
                       f"Expected dimension: {c_dim} channels; "
                       f"Activation mode: {self.act_mode}.")
-                qcw = IterNormRotation(num_features=c_dim,
-                                       activation_mode=act_mode,
-                                       cw_lambda=kwargs.get('cw_lambda', 0.1),
-                                       subspace_map=self.subspaces)
-                # Use setattr consistently for all module types
-                # This works for nn.Module, nn.Sequential, and nn.ModuleList
+                qcw = IterNormRotation(
+                    num_features=c_dim,
+                    activation_mode=act_mode,
+                    cw_lambda=kwargs.get('cw_lambda', 0.1),
+                    subspace_map=self.subspaces
+                )
+
                 parent, attr = mod_ref
-                setattr(parent, attr, qcw)
+                # --- Minimal fix: handle Sequential / ModuleList integer indexing ---
+                if isinstance(attr, int) and isinstance(parent, (nn.Sequential, nn.ModuleList)):
+                    parent.__setitem__(attr, qcw)  # e.g., VGG16-BN features[feat_idx] = qcw
+                else:
+                    setattr(parent, attr, qcw)      # e.g., DenseNet features.norm0 / transition*.norm
+                # -------------------------------------------------------------------
+
                 self.cw_layers.append(qcw)
 
-        self._extra_init(**kwargs)   # optional hook
+        self._extra_init(**kwargs)
 
     # ---------- hooks to override ----------
     def _build_backbone(self, **kw):

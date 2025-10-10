@@ -12,13 +12,14 @@ class DenseNetQCW(BaseQCW):
         else:
             raise ValueError(f"DenseNet depth {depth} not supported. Use 121 or 161.")
         
-        # CW-replaceable BN locations & dims are fixed:
+        # CW-replaceable BN locations & dims:
+        # NOTE: norm0 is 64 for densenet121 and 96 for densenet161.
         self._bn_map = {
-            1: ("features.norm0", 64),
-            2: ("features.transition1.norm",  256 if depth==121 else 384),
-            3: ("features.transition2.norm",  512 if depth==121 else 768),
-            4: ("features.transition3.norm", 1024 if depth==121 else 2112),
-            5: ("features.norm5",             1024 if depth==121 else 2208)
+            1: ("features.norm0",            64 if depth == 121 else 96),
+            2: ("features.transition1.norm", 256 if depth == 121 else 384),
+            3: ("features.transition2.norm", 512 if depth == 121 else 768),
+            4: ("features.transition3.norm", 1024 if depth == 121 else 2112),
+            5: ("features.norm5",            1024 if depth == 121 else 2208),
         }
         return _model, None
 

@@ -84,3 +84,8 @@ subspace*/
 runs-newest/
 analysis/
 analysis_50/
+archives/
+new_checkpoints/
+old_checkpoints/
+figs/
+figure_scripts/

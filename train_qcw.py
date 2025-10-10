@@ -373,9 +373,9 @@ def maybe_resume_checkpoint(model, optimizer, args):
     print("Missing keys:", result.missing_keys)
     print("Unexpected keys:", result.unexpected_keys)
 
-    print("[Checkpoint] Matched keys:")
-    for mk in matched_keys:
-        print("   ", mk)
+    # print("[Checkpoint] Matched keys:")
+    # for mk in matched_keys:
+    #     print("   ", mk)
     print("[Checkpoint] Skipped keys from checkpoint:")
     for sk in skipped_keys:
         print("   ", sk)
