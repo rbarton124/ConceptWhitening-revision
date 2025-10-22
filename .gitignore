@@ -89,3 +89,7 @@ new_checkpoints/
 old_checkpoints/
 figs/
 figure_scripts/
+experiments/
+readmes/
+new_loss_term_data/
+BUGFIX_SUMMARY.md

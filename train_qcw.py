@@ -6,9 +6,11 @@ import random
 import shutil
 import json
 import numpy as np
+import contextlib
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
@@ -70,6 +72,36 @@ parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", h
 parser.add_argument("--vanilla_pretrain", action="store_true", help="Train without Concept Whitening, i.e. vanilla ResNet.") # used to work, isnt working lately TODO: ACTUALLY FIX [issue was subspace null mapping issue]
 parser.add_argument("--disable_subspaces", action="store_true", help="Disable subspace partitioning => one axis per concept.") # this logic is not fleshed out yet TODO: FIX
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.") # doesn't do anything yet TODO: FIX
+# Backbone nudge (CW-loss integration into main task)
+parser.add_argument("--cw_nudge_alpha", type=float, default=0.0,
+                    help="Weight for backbone nudge loss after alignment (0=disabled). Start with 1e-3.")
+parser.add_argument("--cw_nudge_lambda", type=float, default=1.0,
+                    help="Labeled:free balance in nudge loss (weights free term).")
+parser.add_argument("--cw_nudge_tau", type=float, default=0.1,
+                    help="Temperature for soft winner-takes-all (lower=sharper, higher=smoother).")
+# Subconcept sampling (renamed for clarity)
+parser.add_argument("--cw_nudge_labeled_subconcepts", type=int, default=-1,
+                    help="Number of labeled subconcepts to sample per nudge step. -1 = use ALL labeled subconcepts.")
+parser.add_argument("--cw_nudge_free_subconcepts", type=int, default=-1,
+                    help="Number of free subconcepts to sample per nudge step. -1 = use ALL free subconcepts.")
+# Batch sampling control (new)
+parser.add_argument("--cw_nudge_batches_per_subconcept", type=int, default=-1,
+                    help="Number of batches to process per subconcept. -1 = use ALL batches from that loader.")
+# Safety caps (prevent OOM)
+parser.add_argument("--cw_nudge_max_images_per_batch", type=int, default=0,
+                    help="Cap on batch size during nudge (0=no cap, use loader's batch size).")
+parser.add_argument("--cw_nudge_max_total_batches", type=int, default=0,
+                    help="Global cap on total batches processed during nudge (0=unlimited, across labeled+free).")
+# Ergonomics
+parser.add_argument("--cw_nudge_shuffle", action="store_true",
+                    help="Shuffle subconcepts before processing (recommended for variety).")
+parser.add_argument("--cw_nudge_interleave", action="store_true",
+                    help="Interleave labeled and free subconcepts during processing (helps memory/gradient mixing).")
+# Plan B: Optional slice-margin loss (for within-subspace separation)
+parser.add_argument("--cw_nudge_beta", type=float, default=0.0,
+                    help="Weight for slice-margin loss (Plan B, 0=disabled). Try 0.05-0.1 if Plan A plateaus.")
+parser.add_argument("--cw_nudge_gamma", type=float, default=0.2,
+                    help="Margin for slice-margin loss (target should beat others by this amount).")
 
 args = parser.parse_args()
 
@@ -124,6 +156,93 @@ random.seed(args.seed)
 cudnn.benchmark = True
 
 writer = SummaryWriter(log_dir=os.path.join(args.log_dir, f"{args.prefix}_{int(time.time())}"))
+
+################################################################################
+# Backbone Nudge Helpers (CW-Loss Integration)
+################################################################################
+
+def reduce_axis_scores(featmap: torch.Tensor, act_mode: str = "pool_max") -> torch.Tensor:
+    """
+    Reduce spatial dimensions of CW layer output to get per-axis activation scores.
+    Keeps computation graph for backprop.
+    
+    Args:
+        featmap: [B, C, H, W] tensor from QCW layer (post-rotation)
+        act_mode: How to reduce spatial dims ('mean', 'max', 'pos_mean', 'pool_max')
+    
+    Returns:
+        [B, C] tensor of axis activation scores (with gradient)
+    """
+    if act_mode == "mean":
+        return featmap.mean(dim=(2, 3))
+    
+    elif act_mode == "max":
+        # Flatten spatial, take max
+        return featmap.flatten(2).max(dim=2).values
+    
+    elif act_mode == "pos_mean":
+        # Mean of positive activations only
+        pos_mask = (featmap > 0).float()
+        numerator = (featmap * pos_mask).sum(dim=(2, 3))
+        denominator = pos_mask.sum(dim=(2, 3)).clamp(min=1e-6)
+        return numerator / denominator
+    
+    elif act_mode == "pool_max":
+        # Max-pool then spatial mean (default in QCW)
+        pooled = F.max_pool2d(featmap, kernel_size=3, stride=3)
+        return pooled.flatten(2).mean(dim=2)
+    
+    else:
+        # Fallback to mean
+        return featmap.mean(dim=(2, 3))
+
+
+@contextlib.contextmanager
+def freeze_norm_stats_for_qcw_nudge(model):
+    """
+    Context manager that freezes all normalization running statistics during
+    the backbone nudge step. This prevents small concept batches from corrupting
+    the running mean/variance used during main classification training.
+    
+    Mechanism:
+    - Sets all BatchNorm layers to eval() mode (freezes their running stats)
+    - Sets all QCW layer momentum to 0.0 (prevents running_mean/running_wm updates)
+    - Keeps QCW layers in train() mode (so backprop through whitening still works)
+    - Restores original states after the context
+    
+    Args:
+        model: The DataParallel-wrapped model
+    
+    Yields:
+        None (use as context manager)
+    """
+    # Store and freeze BatchNorm modules
+    bn_modules = []
+    for m in model.modules():
+        if isinstance(m, (nn.BatchNorm1d, nn.BatchNorm2d, nn.BatchNorm3d)):
+            bn_modules.append((m, m.training))
+            m.eval()  # Freeze BN stats
+    
+    # Store and freeze QCW momentum (prevents running stat updates)
+    saved_momentums = []
+    if hasattr(model.module, 'cw_layers'):
+        for cw_layer in model.module.cw_layers:
+            saved_momentums.append(cw_layer.momentum)
+            cw_layer.momentum = 0.0  # Freeze whitening stats
+    
+    try:
+        yield
+    finally:
+        # Restore BatchNorm training states
+        for m, was_training in bn_modules:
+            if was_training:
+                m.train()
+        
+        # Restore QCW momentum
+        if hasattr(model.module, 'cw_layers'):
+            for cw_layer, orig_momentum in zip(model.module.cw_layers, saved_momentums):
+                cw_layer.momentum = orig_momentum
+
 
 # Build Main Dataloaders
 def build_main_loaders(args):
@@ -472,6 +591,13 @@ def train_epoch(train_loader, concept_loaders, model, optimizer, epoch, args, wr
             writer.add_scalar("CW/FreeConcept/ActStrengthRatio", act_strength_ratio, iteration)
 
             alignment_score.update(0.3 * global_top5 + 0.65 * subspace_top1 + 0.05 * global_top1)
+                
+            # Backbone Nudge after Cayley update, do one small gradient step to encourage backbone to produce concept-friendly features. Q is fixed (teacher).
+            if args.cw_nudge_alpha > 0.0:
+                nudge_backbone_after_alignment(
+                    model, optimizer, concept_ds, concept_loaders[1:],
+                    args, writer, iteration
+                )
 
         # update progress bar
         postfix_dict = {
@@ -563,12 +689,7 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
                     for img in imgs:
                         _ = model(img.unsqueeze(0))
 
-    # update rotation matrix
-    model.module.update_rotation_matrix()
-    model.module.change_mode(-1)
-    for cw_layer in model.module.cw_layers:
-        cw_layer.clear_subspace()
-        cw_layer.set_subspace_scaling(1.0)
+    # update rotation matrix (FIXED: removed duplicate call)
     model.module.update_rotation_matrix()
     model.module.change_mode(-1)
     for cw_layer in model.module.cw_layers:
@@ -596,6 +717,238 @@ def align_concepts(model, subconcept_loaders, concept_dataset, batches_per_conce
         "act_strength_ratio": metrics["act_strength_ratio"]
     }
 
+
+def nudge_backbone_after_alignment(model, optimizer, concept_dataset, subconcept_loaders, 
+                                   args, writer=None, iteration=None):
+    """
+    Backbone nudge step: One small gradient update on backbone parameters to encourage
+    concept-friendly features. Runs once per alignment cycle, immediately after Cayley update.
+    
+    Args:
+        model: DataParallel-wrapped model with cw_layers
+        optimizer: Main SGD optimizer
+        concept_dataset: ConceptDataset instance with subspace mappings
+        subconcept_loaders: List of (sc_label, DataLoader) tuples
+        args: Argument namespace with nudge hyperparameters
+        writer: TensorBoard writer (optional)
+        iteration: Global iteration number for logging (optional)
+    """
+    # Early exit if disabled
+    if args.cw_nudge_alpha <= 0.0:
+        return
+    
+    # Get last QCW layer
+    last_cw = get_last_qcw_layer(model)
+    if last_cw is None:
+        return
+    
+    # Ensure model is in training mode (but with frozen stats)
+    was_training = model.training
+    model.train()
+    
+    # Build mappings for concept partitioning
+    sc_to_hl_name = concept_dataset.get_subconcept_to_hl_name_mapping()
+    label_to_scname = {}
+    for name, idx in concept_dataset.sc2idx.items():
+        label_to_scname[idx] = name
+    
+    # Partition subconcepts into labeled vs free
+    labeled_concepts = []
+    free_concepts = []
+    
+    for (sc_label, loader) in subconcept_loaders:
+        sc_name = label_to_scname.get(sc_label, "")
+        hl_name = sc_to_hl_name.get(sc_label, "general")
+        
+        if concept_dataset.is_free_subconcept_name(sc_name):
+            free_concepts.append((sc_label, hl_name, loader))
+        else:
+            labeled_concepts.append((sc_label, hl_name, loader))
+    
+    # Shuffle if requested (for variety across alignments)
+    if args.cw_nudge_shuffle:
+        random.shuffle(labeled_concepts)
+        random.shuffle(free_concepts)
+    
+    # Sample subconcepts: -1 means "use all"
+    if args.cw_nudge_labeled_subconcepts >= 0:
+        labeled_concepts = labeled_concepts[:args.cw_nudge_labeled_subconcepts]
+    # else: keep all (when -1)
+    
+    if args.cw_nudge_free_subconcepts >= 0:
+        free_concepts = free_concepts[:args.cw_nudge_free_subconcepts]
+    # else: keep all (when -1)
+    
+    # Optionally interleave labeled and free for better gradient mixing
+    if args.cw_nudge_interleave and labeled_concepts and free_concepts:
+        # Interleave: [L1, F1, L2, F2, ...]
+        max_len = max(len(labeled_concepts), len(free_concepts))
+        interleaved = []
+        for i in range(max_len):
+            if i < len(labeled_concepts):
+                interleaved.append(('labeled', labeled_concepts[i]))
+            if i < len(free_concepts):
+                interleaved.append(('free', free_concepts[i]))
+        concepts_to_process = interleaved
+    else:
+        # Sequential: all labeled, then all free
+        concepts_to_process = [('labeled', c) for c in labeled_concepts] + [('free', c) for c in free_concepts]
+    
+    # Initialize loss accumulators and batch counters
+    loss_lab = 0.0
+    loss_free = 0.0
+    n_lab_batches = 0
+    n_free_batches = 0
+    total_batches_processed = 0
+    
+    # Hook to capture last QCW layer output (keeps computation graph)
+    hook_storage = []
+    def hook_fn(module, inp, out):
+        hook_storage.append(out)  # No .detach() - keep gradients!
+    
+    handle = last_cw.register_forward_hook(hook_fn)
+    
+    try:
+        with freeze_norm_stats_for_qcw_nudge(model):
+            # Process all selected concepts (labeled and/or free, possibly interleaved)
+            for concept_type, concept_data in concepts_to_process:
+                # Check global batch cap
+                if args.cw_nudge_max_total_batches > 0 and total_batches_processed >= args.cw_nudge_max_total_batches:
+                    break  # Hit global cap, stop processing
+                
+                sc_label, hl_name, loader = concept_data
+                
+                # Determine how many batches to process for this subconcept
+                if args.cw_nudge_batches_per_subconcept == -1:
+                    # Use all batches from this loader
+                    num_batches = len(loader)
+                else:
+                    # Use specified number
+                    num_batches = args.cw_nudge_batches_per_subconcept
+                
+                # Respect global cap
+                if args.cw_nudge_max_total_batches > 0:
+                    remaining = args.cw_nudge_max_total_batches - total_batches_processed
+                    num_batches = min(num_batches, remaining)
+                
+                # Process batches for this subconcept
+                loader_iter = iter(loader)
+                for batch_idx in range(num_batches):
+                    try:
+                        batch_data = next(loader_iter, None)
+                        if batch_data is None or len(batch_data[0]) == 0:
+                            break  # No more batches
+                        
+                        imgs = batch_data[0].cuda(non_blocking=True)
+                        
+                        # Apply image cap if requested
+                        if args.cw_nudge_max_images_per_batch > 0:
+                            imgs = imgs[:args.cw_nudge_max_images_per_batch]
+                        
+                        if imgs.size(0) == 0:
+                            continue  # Empty after slicing
+                        
+                        # Forward pass (keeps graph)
+                        hook_storage.clear()
+                        _ = model(imgs)
+                        
+                        if not hook_storage:
+                            continue
+                        
+                        featmap = hook_storage.pop()  # [B, C, H, W]
+                        a = reduce_axis_scores(featmap, act_mode=args.act_mode)  # [B, C]
+                        
+                        # ========================================
+                        # Compute loss based on concept type
+                        # ========================================
+                        if concept_type == 'labeled':
+                            j = sc_label  # Target axis (global index)
+                            
+                            # Direct push: maximize a_j (minimize -a_j)
+                            loss_lab = loss_lab + (-a[:, j].mean())
+                            n_lab_batches += 1
+                            
+                            # Plan B: Optional slice-margin loss
+                            if args.cw_nudge_beta > 0.0:
+                                S = concept_dataset.subspace_mapping.get(hl_name, [])
+                                if S and j in S:
+                                    # Get other axes in same subspace
+                                    S_wo_j = [k for k in S if k != j]
+                                    if S_wo_j:
+                                        # Max activation among other subspace axes
+                                        top_other = a[:, S_wo_j].max(dim=1).values  # [B]
+                                        # Hinge: penalize if a_j < max_other + gamma
+                                        margin_term = (args.cw_nudge_gamma - a[:, j] + top_other).clamp(min=0).mean()
+                                        loss_lab = loss_lab + args.cw_nudge_beta * margin_term
+                        
+                        else:  # concept_type == 'free'
+                            # Get subspace for this HL concept
+                            S = concept_dataset.subspace_mapping.get(hl_name, [])
+                            if S:
+                                # Soft winner-takes-all: τ * log(Σ exp(a_k / τ))
+                                # As τ→0, approaches max_k(a_k)
+                                a_subspace = a[:, S]  # [B, len(S)]
+                                lse = args.cw_nudge_tau * torch.logsumexp(
+                                    a_subspace / args.cw_nudge_tau, dim=1
+                                )  # [B]
+                                
+                                # Maximize LSE (minimize negative)
+                                loss_free = loss_free + (-lse.mean())
+                                n_free_batches += 1
+                        
+                        total_batches_processed += 1
+                    
+                    except (StopIteration, RuntimeError) as e:
+                        # Handle empty loader or CUDA errors gracefully
+                        break  # Move to next subconcept
+    
+    finally:
+        # Always remove hook
+        handle.remove()
+        
+        # Restore model training state
+        if not was_training:
+            model.eval()
+    
+    # Normalize losses by number of batches processed
+    if n_lab_batches > 0:
+        loss_lab = loss_lab / n_lab_batches
+    else:
+        loss_lab = torch.tensor(0.0, device=next(model.parameters()).device)
+    
+    if n_free_batches > 0:
+        loss_free = loss_free / n_free_batches
+    else:
+        loss_free = torch.tensor(0.0, device=next(model.parameters()).device)
+    
+    # Combine losses
+    loss_nudge = args.cw_nudge_alpha * (loss_lab + args.cw_nudge_lambda * loss_free)
+    
+    # Backward pass and optimizer step (Q remains fixed as buffer)
+    if torch.is_tensor(loss_nudge) and loss_nudge.requires_grad:
+        optimizer.zero_grad()
+        loss_nudge.backward()
+        
+        # Optional: clip gradients for stability
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
+        
+        optimizer.step()
+        
+        # Logging
+        if writer is not None and iteration is not None:
+            writer.add_scalar("CW/Nudge/Loss_Labeled", 
+                            float(loss_lab.detach().cpu()) if n_lab_batches > 0 else 0.0, 
+                            iteration)
+            writer.add_scalar("CW/Nudge/Loss_Free", 
+                            float(loss_free.detach().cpu()) if n_free_batches > 0 else 0.0, 
+                            iteration)
+            writer.add_scalar("CW/Nudge/Loss_Total", 
+                            float(loss_nudge.detach().cpu()), 
+                            iteration)
+            writer.add_scalar("CW/Nudge/GradNorm", float(grad_norm), iteration)
+            writer.add_scalar("CW/Nudge/NumLabeledBatches", n_lab_batches, iteration)
+            writer.add_scalar("CW/Nudge/NumFreeBatches", n_free_batches, iteration)
+            writer.add_scalar("CW/Nudge/TotalBatches", total_batches_processed, iteration)
 
 
 def compute_alignment_metrics(model, subconcept_loaders, concept_dataset, batches_per_concept, label_to_scname):
