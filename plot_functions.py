@@ -129,19 +129,52 @@ def build_model(ckpt: str,
 
 
 def build_dataset(root: str, hl_filter: Sequence[str],
-                  bboxes: str, crop_mode: str) -> ConceptDataset:
-    tfm = T.Compose([
-        T.RandomResizedCrop(224),
-        T.RandomHorizontalFlip(),
-        T.ToTensor(),
-        T.Normalize([0.485, 0.456, 0.406],
-                    [0.229, 0.224, 0.225])
-    ])
+                  bboxes: str, crop_mode: str, no_transform: bool = False) -> ConceptDataset:
+    if not no_transform:
+        tfm = T.Compose([
+            T.RandomResizedCrop(224),
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Normalize([0.485, 0.456, 0.406],
+                        [0.229, 0.224, 0.225])
+        ])
+    else:
+        from torchvision.transforms import functional as F
+
+        class ResizeWithPad:
+            """Resize image so the longer side == target, pad the shorter side to make target×target."""
+            def __init__(self, target=224, fill=(0, 0, 0)):
+                self.target = target
+                self.fill = fill
+
+            def __call__(self, img):
+                # img: PIL Image (W, H)
+                w, h = img.size
+                scale = self.target / max(w, h)
+                new_w, new_h = int(round(w * scale)), int(round(h * scale))
+                img = F.resize(img, (new_h, new_w))  # preserves aspect ratio
+
+                # calculate padding to reach 224×224
+                pad_w, pad_h = self.target - new_w, self.target - new_h
+                left = pad_w // 2
+                right = pad_w - left
+                top = pad_h // 2
+                bottom = pad_h - top
+
+                img = F.pad(img, (left, top, right, bottom), fill=self.fill)
+                return img
+
+        tfm = T.Compose([
+            ResizeWithPad(224),  # keep aspect ratio, pad to 224×224
+            T.ToTensor()
+        ])
+
     return ConceptDataset(root_dir=os.path.join(root, "concept_val"),
                           bboxes_file=bboxes,
                           high_level_filter=list(hl_filter),
                           transform=tfm,
                           crop_mode=crop_mode)
+
 
 # -----------------------------------------------------------------------------#
 # Activation collector
@@ -171,6 +204,7 @@ class _Collector:
             acts.append(self.out.numpy())
             labels.append(lbl.numpy())
         return np.concatenate(acts), np.concatenate(labels)
+
 
 # -----------------------------------------------------------------------------#
 # Purity / hierarchy metrics
@@ -302,19 +336,20 @@ class PurityAnalyzer:
         pd.DataFrame(info).T.to_csv(os.path.join(self.out_dir, "result.csv"))
         return info
 
+
 # -----------------------------------------------------------------------------#
 # Top-k image extractor
 # -----------------------------------------------------------------------------#
 class TopKExtractor:
-    def __init__(self, acts, labels, ds, out_dir, model=None):
-        self.acts, self.labels, self.ds, self.out = acts, labels, ds, out_dir
+    def __init__(self, acts, labels, ds, raw_ds, out_dir, model=None):
+        self.acts, self.labels, self.ds, self.raw_ds, self.out = acts, labels, ds, raw_ds, out_dir
         self.model = model
 
     def dump(self, k=10, save_transformed=False):
         from torchvision.utils import save_image
         os.makedirs(self.out, exist_ok=True)
-        mean = torch.tensor([0.485, 0.456, 0.406])
-        std  = torch.tensor([0.229, 0.224, 0.225])
+        # mean = torch.tensor([0.485, 0.456, 0.406])
+        # std  = torch.tensor([0.229, 0.224, 0.225])
 
         labeled = {i for i, n in enumerate(self.ds.get_subconcept_names())
                    if not self.ds.is_free_subconcept_name(n)}
@@ -322,8 +357,9 @@ class TopKExtractor:
         # Optionally re-load transformed tensors once
         imgs_all = None
         if save_transformed:
-            loader = DataLoader(self.ds, 64, shuffle=False, pin_memory=True)
-            imgs_all = torch.cat([b[0] for b in loader])
+            # loader = DataLoader(self.ds, 64, shuffle=False, pin_memory=True)
+            raw_loader = DataLoader(self.raw_ds, 64, shuffle=False, pin_memory=True)
+            imgs_all = torch.cat([b[0] for b in raw_loader])
 
         for idx, scn in enumerate(self.ds.get_subconcept_names()):
             # Choose primary axis for plotting
@@ -339,7 +375,7 @@ class TopKExtractor:
                 dst = os.path.join(dst_dir, f"rank_{rnk+1}.jpg")
                 if save_transformed and imgs_all is not None:
                     img = imgs_all[j].clone()
-                    img.mul_(std[:, None, None]).add_(mean[:, None, None]).clamp_(0, 1)
+                    # img.mul_(std[:, None, None]).add_(mean[:, None, None]).clamp_(0, 1)
                     save_image(img.cpu(), dst)
                 else:
                     shutil.copy2(self.ds.samples[j][0], dst)
@@ -354,6 +390,7 @@ class TopKExtractor:
             if int(ax) not in labeled:
                 return int(ax)
         return None
+
 
 # -----------------------------------------------------------------------------#
 # Plots (kept same structure; minor guards around NaNs)
@@ -554,6 +591,7 @@ def main():
     hl_list = [s.strip() for s in args.hl_concepts.split(",") if s.strip()]
     bboxes  = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
     ds      = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
+    raw_ds  = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state, no_transform=True)
 
     print("\n================ SUB-CONCEPT → AXIS MAP ================")
     for sc_name in ds.get_subconcept_names():
@@ -628,7 +666,7 @@ def main():
             )
 
     if args.topk_images:
-        TopKExtractor(analyzer.acts, analyzer.y, ds,
+        TopKExtractor(analyzer.acts, analyzer.y, ds, raw_ds,
                       os.path.join(args.output_dir, "topk_concept_images")).dump(
             k=args.k, save_transformed=args.save_transformed
         )
@@ -640,10 +678,9 @@ def main():
         info_df = pd.DataFrame(info).T
 
         # Strip global-AUC helper columns that clutter the summary
-        info_df = info_df.drop(columns=[c for c in
-                            ("auc_max_global", "auc_max_hl", "baseline_auc")
-                            if c in info_df.columns],
-                            errors="ignore")
+        info_df = info_df.drop(columns=[c for c in ("auc_max_global", "auc_max_hl", "baseline_auc") 
+                                        if c in info_df.columns],
+                               errors="ignore")
 
         if rank_results is not None:
             rank_df = pd.DataFrame(rank_results).T
