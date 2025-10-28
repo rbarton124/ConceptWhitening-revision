@@ -78,6 +78,7 @@ runs/
 runs_proper/
 dataset_scripts/logs/
 qcw_plots/
+paper_plots/
 checkpoints/
 checkpoints-new/
 model_checkpoints/
