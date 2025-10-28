@@ -19,7 +19,8 @@ def log(msg, level, verbose):
 
 
 def organize_by_category(
-    coco, bboxes, image_ids, image_dir, output_dir, concept_dir, cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose=1, group_by_supercat=False
+    coco, bboxes, image_ids, image_dir, output_dir, concept_dir,
+    cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose=1, group_by_supercat=False
 ):
     if os.path.exists(output_dir):
         log(f"Clearing output directory: {output_dir}", 1, verbose)
@@ -27,13 +28,13 @@ def organize_by_category(
 
     log(f"Creating output directory: {output_dir}", 1, verbose)
     os.makedirs(output_dir, exist_ok=True)
-    log(f"Output directory created.", 1, verbose)
+    log("Output directory created.", 1, verbose)
 
     if not group_by_supercat:
         for class_name in cat_id_to_name.values():
             class_path = os.path.join(output_dir, class_name)
             os.makedirs(class_path, exist_ok=True)  # Ensure class folder exists
-    log(f"All class folders created.", 1, verbose)
+    log("All class folders created.", 1, verbose)
 
     iterable = tqdm(image_ids) if verbose >= 1 else image_ids
     for img_id in iterable:
@@ -47,7 +48,7 @@ def organize_by_category(
 
         if img_id not in img_id_to_cats:
             continue
- 
+
         anns = coco.loadAnns(coco.getAnnIds(imgIds=[img_id]))
         if len(anns) == 0:
             continue
@@ -60,7 +61,7 @@ def organize_by_category(
 
                 dst_dir = os.path.join(output_dir, supercategory, category)
                 os.makedirs(dst_dir, exist_ok=True)
-        
+
                 dst_path = os.path.join(dst_dir, filename)
                 rel_path = os.path.relpath(dst_path, concept_dir)
                 x, y, width, height = ann['bbox']
@@ -130,7 +131,7 @@ def organize_coco(json_path, image_dir, target_root, dataset_name, verbose=1):
     log("\nCreating validation concept datasets...", 1, verbose)
     organize_by_category(coco, bboxes, val_ids, image_dir, os.path.join(concept_root, "concept_val"), concept_root,
                          cat_id_to_name, cat_id_to_supercat, img_id_to_cats, verbose, group_by_supercat=True)
-    
+
     log("\nExtracting bounding boxes for the full main dataset...", 1, verbose)
 
     output_path = os.path.join(concept_root, "bboxes.json")
@@ -143,11 +144,16 @@ def organize_coco(json_path, image_dir, target_root, dataset_name, verbose=1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Organize COCO images into main/concept train/val/test folders.")
-    parser.add_argument("--json", type=str, required=True, help="Path to COCO annotation file (e.g., instances_val2017.json)")
-    parser.add_argument("--img_dir", type=str, required=True, help="Path to directory with COCO images (e.g., val2017/)")
-    parser.add_argument("--target_root", type=str, required=True, help="Directory where output will be stored")
-    parser.add_argument("--dataset_name", type=str, required=True, help="Top-level name for the organized dataset folder")
-    parser.add_argument("--verbose", type=int, default=1, choices=[0, 1, 2], help="Verbosity level: 0=silent, 1=progress (default), 2=all messages")
+    parser.add_argument("--json", type=str, required=True,
+                        help="Path to COCO annotation file (e.g., instances_val2017.json)")
+    parser.add_argument("--img_dir", type=str, required=True,
+                        help="Path to directory with COCO images (e.g., val2017/)")
+    parser.add_argument("--target_root", type=str, required=True,
+                        help="Directory where output will be stored")
+    parser.add_argument("--dataset_name", type=str, required=True,
+                        help="Top-level name for the organized dataset folder")
+    parser.add_argument("--verbose", type=int, default=1, choices=[0, 1, 2],
+                        help="Verbosity level: 0=silent, 1=progress (default), 2=all messages")
 
     args = parser.parse_args()
     organize_coco(args.json, args.img_dir, args.target_root, args.dataset_name, args.verbose)

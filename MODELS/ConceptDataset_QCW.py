@@ -1,10 +1,10 @@
 import os
 import json
 from PIL import Image, ImageDraw
-import torch
 import numpy as np
 from torch.utils.data import Dataset
 from PIL import ImageFilter
+
 
 class ConceptDataset(Dataset):
     """
@@ -112,17 +112,15 @@ class ConceptDataset(Dataset):
                 self._subspace_mapping[hl_lower].add(sc_folder)
 
                 # Collect images
-                for root_, dirs_, files_ in os.walk(sc_path):
+                for root_, _, files_ in os.walk(sc_path):
                     for fname in files_:
-                        if not fname.lower().endswith(('.jpg','.jpeg','.png','.bmp')):
+                        if not fname.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
                             continue
                         full_path = os.path.join(root_, fname)
-                        rel_path  = os.path.relpath(full_path, start=os.path.dirname(self.root_dir))
+                        rel_path = os.path.relpath(full_path, start=os.path.dirname(self.root_dir))
 
                         # bounding box from bboxes_dict if present
                         bbox = self.bboxes_dict.get(rel_path, None)
-                        if bbox is None:
-                            print(f"[ConceptDataset]    Bounding box for {rel_path} not found in bboxes.json.")
 
                         # store sample
                         self.samples.append((full_path, bbox, hl_lower, sc_folder))
@@ -149,8 +147,7 @@ class ConceptDataset(Dataset):
         return len(self.samples)
 
     def __getitem__(self, idx):
-        img_path, box_coords, hl_name, sc_name = self.samples[idx]
-        hl_label = self.hl2idx[hl_name]
+        img_path, box_coords, _, sc_name = self.samples[idx]
         sc_label = self.sc2idx[sc_name]
 
         # Load image
@@ -171,7 +168,7 @@ class ConceptDataset(Dataset):
 
         elif self.crop_mode == "blur":
             w, h = img.size
-            blur_radius = max(3, int(min(w,h)*0.15))
+            blur_radius = max(3, int(min(w, h) * 0.15))
             blurred_img = img.filter(ImageFilter.GaussianBlur(radius=blur_radius))
             box_region = img.crop((x1, y1, x2, y2))
             blurred_img.paste(box_region, (int(x1), int(y1)))
@@ -181,10 +178,10 @@ class ConceptDataset(Dataset):
             # e.g. "redact" or "redact_av"
             if self.crop_mode == "redact_av":
                 np_img = np.array(img.convert("RGB"))
-                mean_color = np_img.reshape(-1,3).mean(axis=0)
+                mean_color = np_img.reshape(-1, 3).mean(axis=0)
                 fill_color = tuple(int(c) for c in mean_color)
             else:
-                fill_color = (0,0,0)
+                fill_color = (0, 0, 0)
 
             draw = ImageDraw.Draw(img)
             draw.rectangle([0, 0, img.width, y1], fill=fill_color)
@@ -216,7 +213,7 @@ class ConceptDataset(Dataset):
 
     def get_num_subconcepts(self):
         return len(self.sc2idx)
-    
+
     def get_subconcept_names(self):
         # Return sub-concept names sorted by their integer index
         return sorted(self.sc2idx.keys(), key=lambda x: self.sc2idx[x])
@@ -226,7 +223,7 @@ class ConceptDataset(Dataset):
 
     def get_hl_names(self):
         return sorted(self.hl2idx.keys(), key=lambda x: self.hl2idx[x])
-        
+
     def get_subconcept_to_hl_mapping(self):
         """Returns a dict: subconcept_index -> high_level_index"""
         sc_to_hl = {}

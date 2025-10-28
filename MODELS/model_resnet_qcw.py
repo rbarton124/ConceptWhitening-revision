@@ -230,7 +230,7 @@ class ResNetQCW(nn.Module):
                 key = key[len("module."):]
             new_sd[key] = val
         model_dict.update(new_sd)
-        self.load_state_dict(model_dict, strict=False)
+        self.backbone.load_state_dict(model_dict, strict=False)
         print("[ResNetQCW] Pretrained weights loaded. (strict=False used)")
 
     def forward(self, x):
