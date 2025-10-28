@@ -1,7 +1,6 @@
 import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.models as models
 from collections import OrderedDict
 from MODELS.iterative_normalization import IterNormRotation
@@ -18,26 +17,27 @@ logging.basicConfig(
     ]
 )
 
+
 class BottleneckCW(nn.Module):
     expansion = 4
-    
+
     def __init__(self, original_block):
         super(BottleneckCW, self).__init__()
-        
+
         # Copy over all conv/bn layers from the original
         self.conv1 = original_block.conv1
-        self.bn1   = original_block.bn1
+        self.bn1 = original_block.bn1
         self.relu1 = nn.ReLU(inplace=True)
 
         self.conv2 = original_block.conv2
-        self.bn2   = original_block.bn2
+        self.bn2 = original_block.bn2
         self.relu2 = nn.ReLU(inplace=True)
 
         self.conv3 = original_block.conv3
-        self.bn3   = original_block.bn3
+        self.bn3 = original_block.bn3
 
         self.downsample = original_block.downsample
-        self.outdim = original_block.outdim if hasattr(original_block, 'outdim') else None
+        self.outdim = original_block.outdim if hasattr(original_block, 'outdim') else self.bn3.num_features
 
         # A final ReLU is used after adding the residual
         self.relu = nn.ReLU(inplace=True)
@@ -66,17 +66,14 @@ class BottleneckCW(nn.Module):
 
         # Add residual to main path
         out += residual
+
         # Now we call the cw module if present
         if self.cw is not None:
-            out_before = out.clone()
-            # self.cw(out)
             out = self.cw(out)
-            diff_mean = (out_before - out).abs().mean().item()
-            # logging.info(f"BottleneckCW effect - Mean difference: {diff_mean}, shape: {out.shape}, device: {out.device}")
-
 
         # Final ReLU after the CW
         out = self.relu(out)
+
         return out
 
 
@@ -86,7 +83,7 @@ class BottleneckCW(nn.Module):
 class ResNetQCW(nn.Module):
     def __init__(self, num_classes=200, depth=18, whitened_layers=None,
                  act_mode="pool_max", subspaces=None, use_subspace=True,
-                 use_free=False, pretrained_model=None, vanilla_pretrain=False):
+                 use_free=False, cw_lambda=0, pretrained_model=None, vanilla_pretrain=False):
         """
         Build a ResNet with a CW layer placed AFTER the residual, matching old code.
 
@@ -101,7 +98,7 @@ class ResNetQCW(nn.Module):
 
         if whitened_layers is None:
             whitened_layers = []
-        
+
         # Build the standard backbone from torchvision
         if depth == 18:
             self.backbone = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
@@ -114,10 +111,10 @@ class ResNetQCW(nn.Module):
             bn_dims = [64, 128, 256, 512]
         else:
             raise ValueError(f"Unsupported depth: {depth}")
-        
+
         in_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Linear(in_features, num_classes)
-        
+
         self.cw_layers: list[IterNormRotation] = []
 
         layer_names = ["layer1", "layer2", "layer3", "layer4"]
@@ -140,17 +137,18 @@ class ResNetQCW(nn.Module):
 
                 if global_counter in whitened_layers:
                     print(f"Attaching CW AFTER residual in {ln}[{b_i}] (global idx {global_counter})")
-                    
+
                     # Wrap the original block in a custom block that calls CW after the residual
                     if block_type == 'bottleneck':
                         new_block = BottleneckCW(original_block)
                     else:
                         # If user tries depth=18, define a similar BasicBlockCW or revert to old logic
                         new_block = self._wrap_basicblock(original_block)  # Helper below
-                        
+
                     # Create the CW module
-                    dim = bn_dims[ln_i]
-                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1, subspace_map=self.subspaces)
+                    dim = new_block.outdim if hasattr(new_block, "outdim") else bn_dims[ln_i]
+                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode,
+                                           cw_lambda=cw_lambda, subspace_map=self.subspaces)
 
                     # Assign it to new_block.cw
                     new_block.cw = qcw
@@ -172,14 +170,15 @@ class ResNetQCW(nn.Module):
         """
         class BasicBlockCW(nn.Module):
             expansion = 1
+
             def __init__(self, blk):
                 super().__init__()
                 self.conv1 = blk.conv1
-                self.bn1   = blk.bn1
+                self.bn1 = blk.bn1
                 self.relu1 = nn.ReLU(inplace=True)
 
                 self.conv2 = blk.conv2
-                self.bn2   = blk.bn2
+                self.bn2 = blk.bn2
                 # no third conv for basic block
 
                 self.downsample = blk.downsample
@@ -198,14 +197,9 @@ class ResNetQCW(nn.Module):
                 out += residual
 
                 if self.cw is not None:
-                    out_before = out.clone()
-                    # self.cw(out)
                     out = self.cw(out)
-                    diff_mean = (out_before - out).abs().mean().item()
-                    # logging.info(f"BasicBlockCW effect - Mean difference: {diff_mean}, shape: {out.shape}, device: {out.device}")
 
                 out = self.relu(out)
-                return out
                 return out
 
         return BasicBlockCW(original_block)
@@ -251,8 +245,8 @@ class ResNetQCW(nn.Module):
         return out
 
 
-def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max", subspaces=None, 
-                     use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=False):
+def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max", subspaces=None,
+                     use_subspace=True, use_free=False, cw_lambda=0, pretrained_model=None, vanilla_pretrain=False):
     """
     Main entry point to construct a ResNet with QCW blocks that attach CW AFTER the residual is added.
     """
@@ -266,6 +260,7 @@ def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="
         subspaces=subspaces,
         use_subspace=use_subspace,
         use_free=use_free,
+        cw_lambda=cw_lambda,
         pretrained_model=pretrained_model,
         vanilla_pretrain=vanilla_pretrain
     )
@@ -286,6 +281,7 @@ def get_last_qcw_layer(model):
             return module
     raise ValueError("No IterNormRotation (QCW) layer found in the model")
 
+
 def get_qcw_layer(model, layer_idx):
     """
     Finds the last IterNormRotation in model.cw_layers or by reversing modules,
@@ -294,8 +290,7 @@ def get_qcw_layer(model, layer_idx):
     if hasattr(model, "cw_layers") and len(model.cw_layers) > 0:
         return model.cw_layers[layer_idx]
 
-
-    # fallback: search modules
+    # Fallback: search modules
     pot_modules = []
     for module in list(model.modules()):
         if isinstance(module, IterNormRotation):
