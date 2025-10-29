@@ -930,7 +930,7 @@ def nudge_backbone_after_alignment(model: nn.DataParallel[ResNetQCW], optimizer,
         loss_free = torch.tensor(0.0, device=next(model.parameters()).device)
 
     # Combine losses
-    loss_nudge = args.cw_nudge_alpha * (loss_lab + args.cw_nudge_lambda * loss_free)
+    loss_nudge = args.cw_nudge_alpha * (loss_lab + args.cw_nudge_lambda * loss_free.to(loss_lab.device))
 
     # Backward pass and optimizer step (Q remains fixed as buffer)
     if torch.is_tensor(loss_nudge) and loss_nudge.requires_grad:
