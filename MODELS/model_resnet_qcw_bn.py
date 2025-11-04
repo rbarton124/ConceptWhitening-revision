@@ -1,18 +1,18 @@
 import os
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.models as models
 from collections import OrderedDict
 from MODELS.iterative_normalization import IterNormRotation
 
+
 class ResNetQCW(nn.Module):
     def __init__(self, num_classes=200, depth=18, whitened_layers=None,
                  act_mode="pool_max", subspaces=None, use_subspace=True,
-                 use_free=False, pretrained_model=None, vanilla_pretrain=False):
+                 use_free=False, cw_lambda=0, pretrained_model=None, vanilla_pretrain=False):
         """
         Build a ResNet with Quantized Concept Whitening layers.
-        
+
         Parameters:
          - num_classes: Output classes.
          - depth: 18 or 50.
@@ -24,11 +24,13 @@ class ResNetQCW(nn.Module):
          - pretrained_model: Path to checkpoint.
          - vanilla_pretrain: Train without Concept Whitening, i.e. vanilla ResNet.
         """
+        print("Using QCW_BN")
+
         super(ResNetQCW, self).__init__()
         self.use_subspace = use_subspace
         self.use_free = use_free
         self.subspaces = subspaces  # Dict like {"high1": [dim0, dim1, ...], ...}
-        
+
         # Build backbone
         if depth == 18:
             self.backbone = models.resnet18(pretrained=False)
@@ -38,13 +40,13 @@ class ResNetQCW(nn.Module):
             bn_dims = [64, 128, 256, 512]
         else:
             raise ValueError(f"Unsupported depth: {depth}")
-        
+
         in_features = self.backbone.fc.in_features
         self.backbone.fc = nn.Linear(in_features, num_classes)
-        
+
         self.cw_layers = []
         layer_names = ["layer1", "layer2", "layer3", "layer4"]
-        
+
         # Compute cumulative block counts to convert global index to layer index.
         cum_counts = []
         count = 0
@@ -52,7 +54,7 @@ class ResNetQCW(nn.Module):
             layer = getattr(self.backbone, ln)
             count += len(layer)
             cum_counts.append(count)
-        
+
         for i, ln in enumerate(layer_names):
             layer = getattr(self.backbone, ln)
             for j, block in enumerate(layer):
@@ -63,14 +65,15 @@ class ResNetQCW(nn.Module):
                           f"with QCW layer. Expected dimension: {bn_dims[i]} channels; "
                           f"Activation mode: {act_mode}.")
                     dim = bn_dims[i]
-                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode, cw_lambda=0.1, subspace_map=self.subspaces)
+                    qcw = IterNormRotation(num_features=dim, activation_mode=act_mode,
+                                           cw_lambda=cw_lambda, subspace_map=self.subspaces)
                     block.bn1 = qcw
                     self.cw_layers.append(qcw)
-        
+
         # Load pretrained weights if provided, this logic needs to be fleshed out an unified with the train resume logic
         if pretrained_model and os.path.isfile(pretrained_model):
             self.load_model(pretrained_model)
-     
+
     def change_mode(self, mode):
         for cw in self.cw_layers:
             cw.mode = mode
@@ -112,23 +115,33 @@ class ResNetQCW(nn.Module):
         out = self.backbone.fc(out)
         return out
 
-def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max",
-                     subspaces=None, use_subspace=True, use_free=False, pretrained_model=None, vanilla_pretrain=False):
-    model = ResNetQCW(num_classes=num_classes, depth=depth, whitened_layers=whitened_layers,
-                      act_mode=act_mode, subspaces=subspaces, use_subspace=use_subspace,
-                      use_free=use_free, pretrained_model=pretrained_model, vanilla_pretrain=vanilla_pretrain)
+
+def build_resnet_qcw(num_classes=200, depth=18, whitened_layers=None, act_mode="pool_max", subspaces=None,
+                     use_subspace=True, use_free=False, cw_lambda=0, pretrained_model=None, vanilla_pretrain=False):
+    model = ResNetQCW(
+        num_classes=num_classes,
+        depth=depth,
+        whitened_layers=whitened_layers,
+        act_mode=act_mode,
+        subspaces=subspaces,
+        use_subspace=use_subspace,
+        use_free=use_free,
+        cw_lambda=cw_lambda,
+        pretrained_model=pretrained_model,
+        vanilla_pretrain=vanilla_pretrain)
     return model
 
-def get_last_qcw_layer(model):    
+
+def get_last_qcw_layer(model):
     if hasattr(model, "cw_layers") and len(model.cw_layers) > 0:
         return model.cw_layers[-1]
-    
-    # if that fails search through all modules
+
+    # If that fails, search through all modules
     for module in reversed(list(model.modules())):
         if isinstance(module, IterNormRotation):
             return module
-            
-    # if all else fails, try the legacy approach
+
+    # If all else fails, try the legacy approach
     try:
         return model.backbone.layer4[-1].bn1
     except (AttributeError, IndexError):

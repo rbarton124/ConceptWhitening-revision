@@ -37,7 +37,7 @@ class BottleneckCW(nn.Module):
         self.bn3 = original_block.bn3
 
         self.downsample = original_block.downsample
-        self.outdim = original_block.outdim if hasattr(original_block, 'outdim') else self.bn3.num_features
+        self.outdim = original_block.outdim if hasattr(original_block, 'outdim') else None
 
         # A final ReLU is used after adding the residual
         self.relu = nn.ReLU(inplace=True)
@@ -146,7 +146,7 @@ class ResNetQCW(nn.Module):
                         new_block = self._wrap_basicblock(original_block)  # Helper below
 
                     # Create the CW module
-                    dim = new_block.outdim if hasattr(new_block, "outdim") else bn_dims[ln_i]
+                    dim = bn_dims[ln_i]
                     qcw = IterNormRotation(num_features=dim, activation_mode=act_mode,
                                            cw_lambda=cw_lambda, subspace_map=self.subspaces)
 
@@ -224,7 +224,7 @@ class ResNetQCW(nn.Module):
                 key = key[len("module."):]
             new_sd[key] = val
         model_dict.update(new_sd)
-        self.backbone.load_state_dict(model_dict, strict=False)
+        self.load_state_dict(model_dict, strict=False)
         print("[ResNetQCW] Pretrained weights loaded. (strict=False used)")
 
     def forward(self, x):

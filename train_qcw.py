@@ -19,7 +19,6 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from PIL import ImageFile
 
-from MODELS.model_resnet_qcw import build_resnet_qcw, ResNetQCW, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True  # allow loading truncated images
@@ -127,6 +126,11 @@ elif args.dataset == "Places365":
 else:
     raise ValueError(f"Unsupported dataset: {args.dataset}")
 
+# Setup
+if args.use_bn_qcw:
+    from MODELS.model_resnet_qcw_bn import build_resnet_qcw, get_last_qcw_layer, ResNetQCW
+else:
+    from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer, ResNetQCW
 
 if args.vanilla_pretrain:
     print("Vanilla pretraining mode: Disabling Concept Whitening and related arguments.")
