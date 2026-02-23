@@ -68,8 +68,8 @@ class BaseQCW(nn.Module):
     def update_rotation_matrix(self):
         for cw in self.cw_layers: cw.update_rotation_matrix()
         
-    def reset_counters(self):
-        for cw in self.cw_layers: cw.reset_counters()
+    def reset_concept_loss(self):
+        for cw in self.cw_layers: cw.reset_concept_loss()
     # ---------------------------------
 
     # ---------- forward pass ----------

@@ -326,8 +326,6 @@ class IterNormRotation(nn.Module):
                 if self.active_subspace in self.subspace_map:
                     subspace_axes=self.subspace_map[self.active_subspace]
                     self._accumulate_gradient_subspace(X_hat, subspace_axes)
-                else:
-                    pass
 
         # 3) Rotation
         X_hat=torch.einsum('bgchw,gdc->bgdhw', X_hat, self.running_rot)
@@ -366,32 +364,26 @@ class IterNormRotation(nn.Module):
         self.concept_loss_acc += concept_loss_val
         self.concept_loss_count += 1
 
-        # consistent indexing: sum_G[group, axis, feature]
-        # num_groups=1 => group dimension = 0 or : 
-        # We'll do the same pattern as subspace, but let's unify:
         self.sum_G[:, axis_idx, :] = (
             self.momentum * grad
             + (1.0 - self.momentum) * self.sum_G[:, axis_idx, :]
         )
-        self.counter[axis_idx]+= act.shape[0]
+        self.counter[axis_idx] += act.shape[0]
 
     def _accumulate_gradient_subspace(self, X_hat, subspace_axes):
         """
         Winner-takes-all among subspace_axes, scaled by self.cw_lambda.
-        If cw_lambda = 0, we skip updating sum_G entirely to avoid decaying old gradient.
+        If cw_lambda = 0, skip updating sum_G entirely.
         """
         B, G, C, H, W = X_hat.shape
         act = self._reduce_activation(X_hat)  # shape [B, C]
         if not subspace_axes:
             return
 
-        # If cw_lambda=0 => aggregator is guaranteed to be 0 => skip update
         if abs(self.cw_lambda) < 1e-12:
-            # do nothing and return
             return
 
-        # find winners
-        subspace_acts = act[:, subspace_axes]  # shape [B, len(subspace_axes)]
+        subspace_acts = act[:, subspace_axes]
         winners = subspace_acts.argmax(dim=1)
 
         aggregator = torch.zeros(C, C, device=act.device)
@@ -403,11 +395,9 @@ class IterNormRotation(nn.Module):
             global_axis = subspace_axes[winners[i].item()]
             chosen_vals.append(act[i, global_axis].item())
 
-            # multiply by cw_lambda
             aggregator[global_axis, :] += -(self.cw_lambda) * act[i, :]
             local_counter[global_axis] += 1
 
-        # concept_loss
         if chosen_vals:
             concept_loss_val = sum(chosen_vals) / len(chosen_vals)
             self.concept_loss_acc += concept_loss_val
