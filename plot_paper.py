@@ -70,31 +70,64 @@ def collect_metrics(root_dir):
 
 
 def plot_purity(results, save_dir):
-    """Line plots: QCW vs CW_ORIG purity for each dataset size/depth"""
+    """Side-by-side panels: QCW vs CW_ORIG purity for small and large datasets, matching russell.py formatting"""
+    # Only keep panels for small and large ResNet-18
+    panels = []
     for (dataset_size, depth), method_data in results.items():
-        plt.figure(figsize=(7, 5))
+        if depth == 18 and dataset_size in ("small", "large"):
+            panels.append((dataset_size, depth, method_data))
 
+    # Sort: small first, then large
+    panels = sorted(panels, key=lambda x: (0 if x[0] == 'small' else 1))
+    n_panels = len(panels)
+    if n_panels == 0:
+        print("[plot_purity] No panels found for ResNet-18 small/large.")
+        return
+
+    fig, axes = plt.subplots(1, n_panels, figsize=(6.5 * n_panels, 4.5))
+    if n_panels == 1:
+        axes = [axes]
+
+    for idx, (dataset_size, depth, method_data) in enumerate(panels):
+        ax = axes[idx]
+        # Collect layer and purity for each method
+        layers_qcw = []
+        purities_qcw = []
+        layers_cw = []
+        purities_cw = []
         for method, vals in method_data.items():
             vals_sorted = sorted(vals, key=lambda x: x[0])
             layers = [v[0] for v in vals_sorted]
             purities = [v[1] for v in vals_sorted]
-
             if method == "QCW":
-                plt.plot(layers, purities, marker="s", color="green", label="QCW Purity")
+                layers_qcw = layers
+                purities_qcw = purities
             elif method == "CW_ORIG":
-                plt.plot(layers, purities, marker="o", color="crimson", label="CW_ORIG Purity")
+                layers_cw = layers
+                purities_cw = purities
 
-        plt.xlabel("Whitened Layer (WL)")
-        plt.ylabel("Mean Purity (AUC)")
-        plt.ylim(0.5, 0.95)
-        plt.title(f"Concept Purity ({dataset_size.capitalize()} / ResNet-{depth})")
-        plt.legend()
-        plt.grid(True, linestyle="--", alpha=0.6)
+        # Plot QCW
+        ax.plot(layers_qcw, purities_qcw, marker="s", color="green",
+                linewidth=2, markersize=8, label="QCW Purity")
+        # Plot CW_ORIG if available
+        if purities_cw:
+            ax.plot(layers_cw, purities_cw, marker="o", color="crimson",
+                    linewidth=2, markersize=8, label="CW_ORIG Purity")
 
-        save_path = Path(save_dir) / f"purity_{dataset_size}_resnet{depth}.png"
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")
-        print(f"[Saved] {save_path}")
-        plt.close()
+        ax.set_xlabel("Whitened Layer (WL)", fontsize=13)
+        ax.set_ylabel("Mean Purity (AUC)", fontsize=13)
+        ax.set_ylim(0.50, 0.95)
+        ax.set_xticks(layers_qcw)
+        ax.set_title(f"Concept Purity ({dataset_size.capitalize()} / ResNet-{depth})", fontsize=14)
+        ax.legend(fontsize=12, framealpha=0.9)
+        ax.grid(True, linestyle="--", alpha=0.6)
+        ax.tick_params(labelsize=11)
+
+    plt.tight_layout()
+    save_path = Path(save_dir) / "purity_side_by_side.png"
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"[Saved] {save_path}")
 
 
 def plot_baseline_vs_masked(results, save_dir):

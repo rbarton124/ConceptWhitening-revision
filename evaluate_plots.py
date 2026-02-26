@@ -49,7 +49,7 @@ def sweep_and_run(checkpoint_root: str, concept_dir: str, output_root: str):
             "--batch_size", 64,
             "--run_purity",
             "--topk_images",
-            "--save_transformed",
+            # "--save_transformed",
             "--auc_max",
             "--energy_ratio",
             "--masked_auc",
