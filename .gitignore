@@ -35,10 +35,11 @@ venv/
 ENV/
 env.bak/
 *venv*/
+requirements.txt
 
 # Conda environments
 # (this ignores any Conda environment folders named `.conda_env`,
-#  but keeps your environment.yml file to recreate the environment.)
+#  but keeps your environment.yml file to recreate the environment.)
 .conda_env/
 
 # Spyder project settings
@@ -67,8 +68,8 @@ desktop.ini
 # Log files
 *.log
 
-# Project data and outputs
 data/
+logs/
 runs/
 model_checkpoints/
 analysis/
@@ -78,6 +79,9 @@ kaggle.json
 
 # Local working directories (not part of the repo)
 figure_scripts/
+train_scripts/
+plot_scripts/
+paper_plots/
 experiments/
 /notes/
 

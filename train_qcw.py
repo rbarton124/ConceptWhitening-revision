@@ -25,22 +25,16 @@ from MODELS.ConceptDataset_QCW import ConceptDataset
 # Optional: tolerate truncated JPEGs if dataset has any
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-# Global Constants
-NUM_CLASSES     = 200
-CROP_SIZE       = 224
-RESIZE_SIZE     = 256
-PIN_MEMORY      = True
-
 # Argument Parser
 parser = argparse.ArgumentParser(description="Train Quantized Concept Whitening (QCW) - Revised")
 
 # Required arguments
 parser.add_argument("--data_dir", required=True, help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")
 parser.add_argument("--concept_dir", required=True, help="Path to concept dataset with concept_train/, concept_val/ (optional), and bboxes.json.")
+parser.add_argument("--main_dataset", type=str, default="CUB", choices=["CUB", "COCO", "Places365"], help="Dataset to use: CUB, COCO, or Places365 (default: CUB)")
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
-
 # Model hyperparams
 parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--model", default="resnet", choices=["resnet", "densenet", "vgg16"], help="Which backbone to use.")
@@ -78,6 +72,21 @@ parser.add_argument("--disable_subspaces", action="store_true", help="Disable su
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.")
 
 args = parser.parse_args()
+
+# Global Constants
+CROP_SIZE       = 224
+RESIZE_SIZE     = 256
+PIN_MEMORY      = True
+
+# Validate dataset
+if args.main_dataset == "CUB":
+    NUM_CLASSES = 200
+elif args.main_dataset == "COCO":
+    NUM_CLASSES = 80
+elif args.main_dataset == "Places365":
+    NUM_CLASSES = 365
+else:
+    raise ValueError(f"Unsupported dataset: {args.dataset}")
 
 # Validate model and depth combinations
 if args.model != "resnet" and args.depth not in [None, 121, 161]:
