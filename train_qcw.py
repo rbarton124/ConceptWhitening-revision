@@ -25,16 +25,22 @@ from MODELS.ConceptDataset_QCW import ConceptDataset
 # Optional: tolerate truncated JPEGs if dataset has any
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+# Global Constants
+NUM_CLASSES     = 200
+CROP_SIZE       = 224
+RESIZE_SIZE     = 256
+PIN_MEMORY      = True
+
 # Argument Parser
 parser = argparse.ArgumentParser(description="Train Quantized Concept Whitening (QCW) - Revised")
 
 # Required arguments
 parser.add_argument("--data_dir", required=True, help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")
 parser.add_argument("--concept_dir", required=True, help="Path to concept dataset with concept_train/, concept_val/ (optional), and bboxes.json.")
-parser.add_argument("--main_dataset", type=str, default="CUB", choices=["CUB", "COCO", "Places365"], help="Dataset to use: CUB, COCO, or Places365 (default: CUB)")
 parser.add_argument("--bboxes", default="", help="Path to bboxes.json if not in concept_dir/bboxes.json")
 parser.add_argument("--concepts", required=True, help="Comma-separated list of high-level concepts to use (e.g. 'wing,beak,general').")
 parser.add_argument("--prefix", required=True, help="Prefix for logging & checkpoint saving")
+
 # Model hyperparams
 parser.add_argument("--whitened_layers", default="5", help="Comma-separated BN layer indices to replace with QCW (e.g. '5' or '2,5')")
 parser.add_argument("--model", default="resnet", choices=["resnet", "densenet", "vgg16"], help="Which backbone to use.")
@@ -45,9 +51,7 @@ parser.add_argument("--act_mode", default="pool_max", help="Activation mode for 
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
 parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
-parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
 parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
-parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
@@ -64,7 +68,6 @@ parser.add_argument("--only_load_weights", action="store_true", help="If set, on
 
 # System
 parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
-parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
 parser.add_argument("--checkpoint_dir", type=str, default="model_checkpoints", help="Directory to save checkpoints.")
@@ -75,21 +78,6 @@ parser.add_argument("--disable_subspaces", action="store_true", help="Disable su
 parser.add_argument("--use_free", action="store_true", help="Enable free unlabeled concept axes if the QCW layer supports it.")
 
 args = parser.parse_args()
-
-# Global Constants
-CROP_SIZE       = 224
-RESIZE_SIZE     = 256
-PIN_MEMORY      = True
-
-# Validate dataset
-if args.main_dataset == "CUB":
-    NUM_CLASSES = 200
-elif args.main_dataset == "COCO":
-    NUM_CLASSES = 80
-elif args.main_dataset == "Places365":
-    NUM_CLASSES = 365
-else:
-    raise ValueError(f"Unsupported dataset: {args.dataset}")
 
 # Validate model and depth combinations
 if args.model != "resnet" and args.depth not in [None, 121, 161]:
@@ -169,7 +157,6 @@ def reduce_axis_scores(featmap: torch.Tensor, act_mode: str = "pool_max") -> tor
 def build_main_loaders(args):
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(CROP_SIZE, scale=(0.5, 1.0)),
-        transforms.RandomResizedCrop(CROP_SIZE, scale=(0.5, 1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), shear=5,
@@ -182,7 +169,6 @@ def build_main_loaders(args):
         transforms.Resize(RESIZE_SIZE),
         transforms.CenterCrop(CROP_SIZE),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
@@ -781,7 +767,7 @@ def compute_alignment_metrics(model, subconcept_loaders, concept_dataset, batche
     }
 
 
-def validate(loader, model: nn.DataParallel[ResNetQCW], epoch, writer: SummaryWriter, mode="Val"):
+def validate(loader, model, epoch, writer, mode="Val"):
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
     losses = AverageMeter()
