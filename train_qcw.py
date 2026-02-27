@@ -86,7 +86,7 @@ elif args.main_dataset == "COCO":
 elif args.main_dataset == "Places365":
     NUM_CLASSES = 365
 else:
-    raise ValueError(f"Unsupported dataset: {args.dataset}")
+    raise ValueError(f"Unsupported dataset: {args.main_dataset}")
 
 # Validate model and depth combinations
 if args.model != "resnet" and args.depth not in [None, 121, 161]:

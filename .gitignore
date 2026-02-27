@@ -35,7 +35,6 @@ venv/
 ENV/
 env.bak/
 *venv*/
-requirements.txt
 
 # Conda environments
 # (this ignores any Conda environment folders named `.conda_env`,

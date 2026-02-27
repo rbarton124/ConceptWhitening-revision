@@ -23,3 +23,4 @@ dependencies:
   - ruamel.yaml>=0.18
   - pip:
       - tqdm>=4.67
+      - pycocotools>=2.0
