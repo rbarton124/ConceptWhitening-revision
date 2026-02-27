@@ -3,18 +3,19 @@ from __future__ import annotations
 # -----------------------------------------------------------------------------#
 # Imports & global constants
 # -----------------------------------------------------------------------------#
-import argparse, json, logging, math, os, shutil
+import argparse, io, json, logging, math, os, shutil
 from typing import Dict, List, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np, pandas as pd, torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms as T
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from rank_metrics import run_rank_metrics  # NEW helper
+from rank_metrics import run_rank_metrics
 
 # Output subdirectories
 PUR_SUBDIR = "purity"
@@ -22,7 +23,7 @@ HIER_SUBDIR = "hierarchy"
 MAUC_SUBDIR = "masked_auc"
 RANK_SUBDIR = "rank_metrics"
 
-from MODELS.model_resnet_qcw import build_resnet_qcw, get_last_qcw_layer
+from MODELS.factory_qcw import build_qcw, get_last_qcw_layer
 from MODELS.ConceptDataset_QCW import ConceptDataset
 
 torch.set_printoptions(sci_mode=False)
@@ -42,21 +43,70 @@ def _load_checkpoint(model: nn.Module, ckpt_path: str) -> nn.Module:
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     raw  = ckpt.get("state_dict", ckpt)
     msd  = model.state_dict(); clean = {}
+    
+    # Track keys that couldn't be loaded
+    shape_mismatched = []
+    not_found_in_model = []
+    
+    # Process checkpoint keys
     for k, v in raw.items():
         k2 = k.replace("module.", "").replace("model.", "")
         if not k2.startswith("backbone.") and f"backbone.{k2}" in msd:   k2 = f"backbone.{k2}"
         if k2.startswith("fc.")        and f"backbone.{k2}" in msd:      k2 = f"backbone.{k2}"
-        if k2 in msd and v.shape == msd[k2].shape:  clean[k2] = v
+        
+        if k2 in msd:
+            if v.shape == msd[k2].shape:
+                clean[k2] = v
+            else:
+                shape_mismatched.append((k, k2, str(v.shape), str(msd[k2].shape)))
+        else:
+            not_found_in_model.append(k)
+    
+    # Track model keys not found in checkpoint
+    not_in_checkpoint = [k for k in msd.keys() if k not in clean]
+    
+    # Load the state dict
     model.load_state_dict(clean, strict=False)
+    
+    # Log loading statistics
     logging.info("Loaded %d/%d tensors from %s", len(clean), len(raw), ckpt_path)
+    
+    # Log detailed information about unloaded modules
+    if shape_mismatched:
+        logging.info("Modules with shape mismatch (not loaded):")
+        for orig_k, model_k, ckpt_shape, model_shape in shape_mismatched[:10]:
+            logging.info("  %s -> %s: checkpoint shape %s, model shape %s", orig_k, model_k, ckpt_shape, model_shape)
+        if len(shape_mismatched) > 10:
+            logging.info("  ...and %d more", len(shape_mismatched) - 10)
+    
+    if not_found_in_model:
+        logging.info("Checkpoint keys not found in model:")
+        for k in not_found_in_model[:10]:
+            logging.info("  %s", k)
+        if len(not_found_in_model) > 10:
+            logging.info("  ...and %d more", len(not_found_in_model) - 10)
+    
+    if not_in_checkpoint:
+        logging.info("Model keys not found in checkpoint:")
+        for k in not_in_checkpoint[:10]:
+            logging.info("  %s", k)
+        if len(not_in_checkpoint) > 10:
+            logging.info("  ...and %d more", len(not_in_checkpoint) - 10)
+    
     return model
 
 
-def build_model(ckpt: str, depth: int, whitened: List[int], act_mode: str,
-                subspaces: dict | None, num_classes: int) -> nn.Module:
-    mdl = build_resnet_qcw(num_classes=num_classes, depth=depth,
-                           whitened_layers=whitened, act_mode=act_mode,
-                           subspaces=subspaces)
+def build_model(ckpt: str, model_type: str, depth: int, whitened: List[int], act_mode: str,
+                subspaces: dict | None, num_classes: int, cw_lambda: float = 0.05) -> nn.Module:
+    mdl = build_qcw(model_type=model_type,
+                    num_classes=num_classes, 
+                    depth=depth,
+                    whitened_layers=whitened, 
+                    act_mode=act_mode,
+                    subspaces=subspaces,
+                    cw_lambda=cw_lambda,
+                    pretrained_model=None,
+                    vanilla_pretrain=False)
     mdl = _load_checkpoint(mdl, ckpt)
     return nn.DataParallel(mdl).cuda().eval()
 
@@ -72,14 +122,39 @@ def build_dataset(root: str, hl_filter: Sequence[str],
                           transform=tfm, crop_mode=crop_mode)
 
 # -----------------------------------------------------------------------------#
+# Spatial reduction (must match the mode used during training)
+# -----------------------------------------------------------------------------#
+def _reduce_axis_scores(featmap: torch.Tensor, act_mode: str = "pool_max") -> torch.Tensor:
+    """Reduce spatial dims of a 4-D [B,C,H,W] feature map to [B,C] per-axis scores."""
+    if act_mode == "mean":
+        return featmap.mean(dim=(2, 3))
+    elif act_mode == "max":
+        return featmap.flatten(2).max(dim=2).values
+    elif act_mode == "pos_mean":
+        pos = (featmap > 0).to(featmap.dtype)
+        return (featmap * pos).sum(dim=(2, 3)) / pos.sum(dim=(2, 3)).clamp(min=1e-6)
+    elif act_mode == "pool_max":
+        pooled = F.max_pool2d(featmap, kernel_size=3, stride=3)
+        return pooled.flatten(2).mean(dim=2)
+    else:
+        return featmap.mean(dim=(2, 3))
+
+
+# -----------------------------------------------------------------------------#
 # Activation collector
 # -----------------------------------------------------------------------------#
 class _Collector:
     """Small helper to grab activations from the last QCW layer."""
-    def __init__(self, model: nn.Module, K: int):
+    def __init__(self, model: nn.Module, K: int, act_mode: str = "pool_max"):
         self.out = None
+        self.K = K
+        self.act_mode = act_mode
         layer = get_last_qcw_layer(model.module if isinstance(model, nn.DataParallel) else model)
-        layer.register_forward_hook(lambda _,__,y: setattr(self, "out", y.mean((2,3))[:,:K].cpu()))
+        layer.register_forward_hook(self._hook)
+
+    def _hook(self, module, inp, out):
+        scores = _reduce_axis_scores(out, self.act_mode)
+        self.out = scores[:, :self.K].cpu()
 
     def run(self, model, loader, device="cuda"):
         acts, labels = [], []
@@ -103,9 +178,10 @@ class PurityAnalyzer:
         self.ds, self.model, self.device, self.out_dir = ds, model, device, out_dir
         self.sc_names = ds.get_subconcept_names();  self.K = len(self.sc_names)
 
-        # collect activations once
+        # collect activations once (spatial reduction must match training)
+        act_mode = getattr(self.cfg, "act_mode", "pool_max")
         loader  = DataLoader(ds, bs, shuffle=False, pin_memory=True)
-        acts, y = _Collector(model, self.K).run(model, loader, device)
+        acts, y = _Collector(model, self.K, act_mode=act_mode).run(model, loader, device)
         self.acts, self.y = acts, y
 
         # hierarchy maps
@@ -199,8 +275,6 @@ class PurityAnalyzer:
                 "baseline_auc": prim_auc,
                 "hier_auc": hier_auc,
             }
-            # Dropped CSV columns: best_ax_hl, auc_hl, mass_global, mass_hl, mass_retained_pct, topk_global (see patch guide for rationale)
-
 
             # optional terse diagnostics
             if self.cfg.verbose and not getattr(self, "_printed", False):
@@ -292,9 +366,10 @@ def bar_plot(info: Dict[str, dict], out_path: str, show_values: bool = True):
 
     # Cosmetics
     ax.set_xticks(np.arange(N))
-    ax.set_xticklabels(df["index"], rotation=45, ha="right")
+    ax.set_xticklabels(df["index"], rotation=45, ha="right", fontsize=14)
     ax.set_ylim(0, 1)
-    ax.set_ylabel("AUC (concept purity)")
+    ax.set_ylabel("AUC (concept purity)", fontsize=14)
+    ax.tick_params(axis="y", labelsize=14)
     ax.set_title("Concept Purity")
     ax.legend(handles=[
         mpatches.Patch(color="blue", label="Unlabeled axis"),
@@ -342,12 +417,13 @@ def hierarchy_plot(info: Dict[str, dict], out_path: str,
 
     for ax, metric in zip(axes, cols):
         ax.bar(np.arange(n), df[metric], color=colors)
-        ax.set_ylabel(("Δ-max" if metric=="delta_max" else "Energy ratio"))
+        ax.set_ylabel(("Δ-max" if metric=="delta_max" else "Energy ratio"), fontsize=14)
         ax.set_ylim(0, 1)
         ax.grid(axis="y", ls=":", alpha=.4)
+        ax.tick_params(axis="y", labelsize=14)
 
     axes[-1].set_xticks(np.arange(n))
-    axes[-1].set_xticklabels(df["index"], rotation=45, ha="right")
+    axes[-1].set_xticklabels(df["index"], rotation=45, ha="right", fontsize=14)
     axes[0].set_title("Hierarchy metrics (slice vs. global)")
 
     # Legend only once
@@ -382,8 +458,9 @@ def masked_auc_plot(info: Dict[str, dict], out_path: str):
     plt.bar(x + w/2, df["hier_auc"],     width=w, label="Masked AUC",    color="teal")
     plt.axhline(0.5, color="k", ls=":", lw=.8)
 
-    plt.xticks(x, df["index"], rotation=45, ha="right")
-    plt.ylabel("ROC-AUC")
+    plt.xticks(x, df["index"], rotation=45, ha="right", fontsize=14)
+    plt.ylabel("ROC-AUC", fontsize=14)
+    plt.tick_params(axis="y", labelsize=14)
     plt.ylim(0, 1)
     plt.title("Effect of HL masking on axis purity")
     plt.legend()
@@ -400,12 +477,16 @@ def get_args():
     p = argparse.ArgumentParser("QCW concept analyzer (compact)")
     # model
     p.add_argument("--model_checkpoint", required=True)
-    p.add_argument("--depth", type=int, default=18)
+    p.add_argument("--model", default="resnet", choices=["resnet", "densenet", "vgg16"],
+                  help="Which backbone to instantiate for analysis.")
+    p.add_argument("--depth", type=int, default=18,
+                  help="18/50 for ResNet, 121/161 for DenseNet; ignored for VGG.")
     p.add_argument("--whitened_layers", default="5")
     p.add_argument("--act_mode", default="pool_max")
+    p.add_argument("--cw_lambda", type=float, default=0.05,
+                  help="λ used during training – purely for completeness when instantiating the layer objects.")
     p.add_argument("--num_classes", type=int, default=200)
     p.add_argument("--subspaces_json", default="")
-    p.add_argument("--use_bn_qcw", action="store_true")
     # data
     p.add_argument("--concept_dir", required=True)
     p.add_argument("--hl_concepts", default="")
@@ -435,20 +516,40 @@ def main():
     args = get_args()
     logging.basicConfig(level=logging.INFO, format=LOGFMT)
 
-    if args.use_bn_qcw:
-        global build_resnet_qcw, get_last_qcw_layer
-        from MODELS.model_resnet_qcw_bn import build_resnet_qcw as B, get_last_qcw_layer as L
-        build_resnet_qcw, get_last_qcw_layer = B, L
-
     wl = [int(x) for x in args.whitened_layers.split(",") if x.strip()]
+    
+    # Validate whitened_layers based on model and depth
+    max_idx_per_model = {
+        ("resnet", 18): 8,   ("resnet", 50): 16,
+        ("densenet", 121): 5, ("densenet", 161): 5,
+        ("vgg16", None): 13
+    }
+    max_idx = max_idx_per_model.get((args.model, args.depth))
+    invalid = [i for i in wl if i < 1 or i > max_idx]
+    if invalid:
+        raise ValueError(f"whitened_layers {invalid} out of range 1..{max_idx} for {args.model}.")
+    
     subspaces = json.load(open(args.subspaces_json)) if args.subspaces_json and os.path.isfile(args.subspaces_json) else None
 
-    model = build_model(args.model_checkpoint, args.depth, wl, args.act_mode,
-                        subspaces, args.num_classes)
+    model = build_model(args.model_checkpoint, args.model, args.depth, wl, args.act_mode,
+                        subspaces, args.num_classes, cw_lambda=args.cw_lambda)
 
     hl_list = [s.strip() for s in args.hl_concepts.split(",") if s.strip()]
     bboxes  = args.bboxes_file or os.path.join(args.concept_dir, "bboxes.json")
     ds      = build_dataset(args.concept_dir, hl_list, bboxes, args.image_state)
+    
+    print("\n================ SUB-CONCEPT → AXIS MAP ================")
+    for sc_name in ds.get_subconcept_names():
+        idx = ds.sc2idx[sc_name]
+        print(f"  [{idx:>3}]  {sc_name}")
+    print("========================================================\n")
+
+    print("=========== HIGH-LEVEL SUBSPACE LAYOUT ===========")
+    for hl, axes in ds.subspace_mapping.items():
+        # axes is already a list of global axis indices for that HL slice
+        axes_str = ", ".join(map(str, axes))
+        print(f"  {hl:<12}:  [{axes_str}]")
+    print("==================================================\n")
 
     analyzer = PurityAnalyzer(model, ds, bs=args.batch_size,
                               out_dir=args.output_dir, cfg=args)
@@ -500,7 +601,7 @@ def main():
                 if hl != "_free":
                     labeled_axes.extend(axes)
             
-            run_rank_metrics(analyzer.acts,
+            rank_results = run_rank_metrics(analyzer.acts,
                             analyzer.y,
                             analyzer.subspace,
                             analyzer.sc2hl,
@@ -514,6 +615,67 @@ def main():
                       os.path.join(args.output_dir, "topk_concept_images"),
                       model if args.save_transformed else None
                      ).dump(k=args.k, save_transformed=args.save_transformed)
+                     
+    # ------------------------------------------------------------------#
+    # Combine purity + rank metrics ➜ final results.csv (clean format)
+    # ------------------------------------------------------------------#
+    info_df = pd.DataFrame(info).T
+
+    # 1. Strip the two global-AUC columns that clutter the summary
+    info_df = info_df.drop(columns=[c for c in 
+                                   ("auc_max_global", "auc_max_hl", "baseline_auc")
+                                   if c in info_df.columns],
+                          errors="ignore")
+
+    # 2. Append ONLY the specific rank metrics we want (not all of them)
+    if args.rank_metrics:
+        rank_df = pd.DataFrame(rank_results).T          # index = subconcept idx
+        
+        # Filter to keep only the requested rank metrics
+        desired_metrics = ["mean_rank_raw", "mean_rank_mask", "hit@3_raw", "hit@3_mask"]
+        keep_cols = [col for col in desired_metrics if col in rank_df.columns]
+        rank_df = rank_df[keep_cols]
+        
+        # Rename index to human names so it lines up with info_df
+        rank_df.index = [list(info.keys())[i] for i in rank_df.index]
+        info_df = info_df.join(rank_df, how="left")
+
+    # 3. Handle numeric formatting properly
+    # Make sure missing numeric entries are NaN, not None (which would make columns object type)
+    info_df = info_df.replace({None: np.nan})
+    
+    # Identify numeric columns, cast → float, round to 3 dp
+    num_cols = info_df.select_dtypes(include=["number"]).columns
+    info_df[num_cols] = info_df[num_cols].astype(float).round(3)
+    
+    # 4. Create a combined markdown file with model info and CSV data
+    # First write the CSV data to a string for embedding in the markdown
+    csv_buffer = io.StringIO()
+    info_df.to_csv(csv_buffer, float_format="%.3g")  # Use %.3g to avoid trailing zeros
+    csv_content = csv_buffer.getvalue()
+    
+    # Create the combined markdown file with model info as headers and CSV as code block
+    md_path = os.path.join(args.output_dir, "results.md")
+    with open(md_path, "w") as f:
+        f.write(f"# QCW Model Analysis Results\n\n")
+        f.write(f"## Model Information\n\n")
+        f.write(f"- **Model:** {args.model}{'-' + str(args.depth) if args.model != 'vgg16' else ''}\n")
+        f.write(f"- **Checkpoint:** {args.model_checkpoint}\n")
+        f.write(f"- **Whitened Layers:** {args.whitened_layers}\n")
+        f.write(f"- **CW Lambda:** {args.cw_lambda}\n")
+        f.write(f"- **Concept Directory:** {args.concept_dir}\n")
+        f.write(f"- **HL Concepts:** {args.hl_concepts}\n")
+        f.write(f"- **Image State:** {args.image_state}\n\n")
+        
+        f.write(f"## Metrics Data\n\n")
+        f.write(f"```csv\n{csv_content}```\n")
+    
+    # Still write the plain CSV for tools that need it with the same rounding
+    csv_path = os.path.join(args.output_dir, "result.csv")
+    info_df.to_csv(csv_path, float_format="%.3g")  # Use %.3g to avoid trailing zeros
+    
+    print(f"[Summary] Markdown results written → {md_path} (values rounded to 3 decimals)")
+    print(f"[Summary] CSV data also available at → {csv_path} (values rounded to 3 decimals)")
 
 if __name__ == "__main__":
     main()

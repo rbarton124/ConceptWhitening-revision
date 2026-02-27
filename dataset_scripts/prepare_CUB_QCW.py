@@ -94,7 +94,7 @@ def load_attributes(cub_dir):
     df = pd.read_csv(lbl_file,sep=" ",header=None,
                      names=["image_id","attribute_id","is_present","certainty_id","time"],
                      on_bad_lines="skip")
-    df=df[(df["is_present"]==1) & (df["certainty_id"]>=3)]
+    df=df[(df["is_present"]==1) & (df["certainty_id"]>=4)]
     df["attribute"]=df["attribute_id"].map(attr_map)
     return df
 
