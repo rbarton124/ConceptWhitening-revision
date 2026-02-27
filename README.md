@@ -17,9 +17,9 @@ conda activate QCW
 ├── rank_metrics.py               Mean rank / Hit@k metrics (called by plot_functions)
 │
 ├── MODELS/
-│   ├── iterative_normalization.py    ZCA whitening + Cayley rotation + gradient accumulation
+│   ├── iterative_normalization.py   ZCA whitening + Cayley rotation + gradient accumulation
 │   ├── factory_qcw.py               build_qcw() dispatcher for all architectures
-│   ├── ConceptDataset_QCW.py         Concept dataset with crop/redact/blur and free detection
+│   ├── ConceptDataset_QCW.py        Concept dataset with crop/redact/blur and free detection
 │   └── backbones/
 │       ├── base_qcw.py              Abstract base: BN replacement loop, mode/rotation helpers
 │       ├── resnet_qcw.py            ResNet-18/50 (indices 1-8 / 1-16)
@@ -28,11 +28,13 @@ conda activate QCW
 │
 ├── dataset_scripts/
 │   ├── prepare_CUB_QCW.py           CUB-200-2011 to QCW format
-│   ├── add_free_concepts.py          Add free (unlabeled) concept folders
-│   ├── manage_concept_data.py        Interactive concept dataset curation tool
-│   ├── cull_runs.py                  Clean up short/incomplete TensorBoard runs
-│   ├── download_imagenet.py          Download pretrained ResNet-18 weights
-│   └── download_places_365.py        Download Places365 dataset
+│   ├── prepare_COCO_QCW.py          COCO to QCW format
+│   ├── prepare_Places365_QCW.py     Places365 to QCW format
+│   ├── add_free_concepts.py         Add free (unlabeled) concept folders
+│   ├── manage_concept_data.py       Interactive concept dataset curation tool
+│   ├── cull_runs.py                 Clean up short/incomplete TensorBoard runs
+│   ├── download_imagenet.py         Download pretrained ResNet-18 weights
+│   └── download_places_365.py       Download Places365 dataset
 │
 ├── environment.yml
 ├── LICENSE
@@ -123,17 +125,63 @@ python dataset_scripts/add_free_concepts.py \
     --n_free_per_hl 2
 ```
 
+### COCO Setup
+
+The COCO data preparation script builds both:
+- A main classification dataset (ImageFolder structure)
+- A concept dataset organized by object category, which is used as the **concept dataset** for COCO/Places365 training
+
+The script expects a standard COCO installation with `instances_train2017.json` and `train2017/` image directory.
+
+```bash
+# 1. Download and extract COCO 2017 dataset
+#    Ensure you have:
+#    - annotations/instances_train2017.json
+#    - train2017/ images
+
+# 2. Generate main classification dataset + concept dataset
+python dataset_scripts/prepare_COCO_QCW.py \
+    --json /path/to/COCO/annotations/instances_train2017.json \
+    --img_dir /path/to/COCO/train2017 \
+    --target_root data/ \
+    --dataset_name COCO_QCW_prepared \
+    --verbose 1
+```
+
+### Places365 Setup
+
+The Places365 preparation script builds a mini structured dataset compatible with training. The main classification dataset generated can be used as the **main classification dataset** for COCO/Places365 training.
+
+```bash
+# 1. Download Places365 (Standard or Small version)
+#    Ensure you have:
+#    - data_256/
+#    - val_256/
+#    - categories_places365.txt
+#    - places365_val.txt
+
+# 2. Generate main classfication dataset + concept dataset
+python dataset_scripts/prepare_Places365_QCW.py \
+    --train_dir /path/to/Places365/data_256 \
+    --val_dir /path/to/Places365/val_256 \
+    --categories /path/to/Places365/categories_places365.txt \
+    --val_txt /path/to/Places365/places365_val.txt \
+    --target_root data/ \
+    --dataset_name Places365_QCW_prepared \
+    --verbose 1
+```
+
 ## Training
 
 ```bash
 python train_qcw.py \
-    --data_dir data/CUB/main_data \
-    --concept_dir data/CUB/concept_data \
+    --data_dir data/<CUB|Places365>/main_data \
+    --concept_dir data/<CUB|COCO>/concept_data \
     --concepts wing,beak,eye,nape \
     --whitened_layers 7 \
     --prefix QCW18_WL7 \
     --model resnet --depth 18 \
-    --resume model_checkpoints/res18_CUB.pth \
+    --resume model_checkpoints/res18_<CUB|Places365>.pth \
     --only_load_weights
 ```
 
@@ -204,7 +252,7 @@ Logged metrics:
 ```bash
 python plot_functions.py \
     --model_checkpoint model_checkpoints/QCW18_WL7_best.pth \
-    --concept_dir data/CUB/concept_data \
+    --concept_dir data/<CUB|COCO>/concept_data \
     --hl_concepts wing,beak,eye,nape \
     --whitened_layers 7 \
     --model resnet --depth 18 \
