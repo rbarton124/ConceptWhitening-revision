@@ -99,3 +99,8 @@ REPO_AUDIT.md
 # Nudge experiment artifacts (historical)
 WL7_*/
 parametersearch*/
+
+# Submission artifacts
+legacy/
+paper/
+*.zip

@@ -9,6 +9,7 @@ from typing import Dict, List, Sequence
 import matplotlib.pyplot as plt
 import numpy as np, pandas as pd, torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms as T
 from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
@@ -121,14 +122,39 @@ def build_dataset(root: str, hl_filter: Sequence[str],
                           transform=tfm, crop_mode=crop_mode)
 
 # -----------------------------------------------------------------------------#
+# Spatial reduction (must match the mode used during training)
+# -----------------------------------------------------------------------------#
+def _reduce_axis_scores(featmap: torch.Tensor, act_mode: str = "pool_max") -> torch.Tensor:
+    """Reduce spatial dims of a 4-D [B,C,H,W] feature map to [B,C] per-axis scores."""
+    if act_mode == "mean":
+        return featmap.mean(dim=(2, 3))
+    elif act_mode == "max":
+        return featmap.flatten(2).max(dim=2).values
+    elif act_mode == "pos_mean":
+        pos = (featmap > 0).to(featmap.dtype)
+        return (featmap * pos).sum(dim=(2, 3)) / pos.sum(dim=(2, 3)).clamp(min=1e-6)
+    elif act_mode == "pool_max":
+        pooled = F.max_pool2d(featmap, kernel_size=3, stride=3)
+        return pooled.flatten(2).mean(dim=2)
+    else:
+        return featmap.mean(dim=(2, 3))
+
+
+# -----------------------------------------------------------------------------#
 # Activation collector
 # -----------------------------------------------------------------------------#
 class _Collector:
     """Small helper to grab activations from the last QCW layer."""
-    def __init__(self, model: nn.Module, K: int):
+    def __init__(self, model: nn.Module, K: int, act_mode: str = "pool_max"):
         self.out = None
+        self.K = K
+        self.act_mode = act_mode
         layer = get_last_qcw_layer(model.module if isinstance(model, nn.DataParallel) else model)
-        layer.register_forward_hook(lambda _,__,y: setattr(self, "out", y.mean((2,3))[:,:K].cpu()))
+        layer.register_forward_hook(self._hook)
+
+    def _hook(self, module, inp, out):
+        scores = _reduce_axis_scores(out, self.act_mode)
+        self.out = scores[:, :self.K].cpu()
 
     def run(self, model, loader, device="cuda"):
         acts, labels = [], []
@@ -152,9 +178,10 @@ class PurityAnalyzer:
         self.ds, self.model, self.device, self.out_dir = ds, model, device, out_dir
         self.sc_names = ds.get_subconcept_names();  self.K = len(self.sc_names)
 
-        # collect activations once
+        # collect activations once (spatial reduction must match training)
+        act_mode = getattr(self.cfg, "act_mode", "pool_max")
         loader  = DataLoader(ds, bs, shuffle=False, pin_memory=True)
-        acts, y = _Collector(model, self.K).run(model, loader, device)
+        acts, y = _Collector(model, self.K, act_mode=act_mode).run(model, loader, device)
         self.acts, self.y = acts, y
 
         # hierarchy maps
@@ -341,9 +368,10 @@ def bar_plot(info: Dict[str, dict], out_path: str, show_values: bool = True):
 
     # Cosmetics
     ax.set_xticks(np.arange(N))
-    ax.set_xticklabels(df["index"], rotation=45, ha="right")
+    ax.set_xticklabels(df["index"], rotation=45, ha="right", fontsize=14)
     ax.set_ylim(0, 1)
-    ax.set_ylabel("AUC (concept purity)")
+    ax.set_ylabel("AUC (concept purity)", fontsize=14)
+    ax.tick_params(axis="y", labelsize=14)
     ax.set_title("Concept Purity")
     ax.legend(handles=[
         mpatches.Patch(color="blue", label="Unlabeled axis"),
@@ -391,12 +419,13 @@ def hierarchy_plot(info: Dict[str, dict], out_path: str,
 
     for ax, metric in zip(axes, cols):
         ax.bar(np.arange(n), df[metric], color=colors)
-        ax.set_ylabel(("Δ-max" if metric=="delta_max" else "Energy ratio"))
+        ax.set_ylabel(("Δ-max" if metric=="delta_max" else "Energy ratio"), fontsize=14)
         ax.set_ylim(0, 1)
         ax.grid(axis="y", ls=":", alpha=.4)
+        ax.tick_params(axis="y", labelsize=14)
 
     axes[-1].set_xticks(np.arange(n))
-    axes[-1].set_xticklabels(df["index"], rotation=45, ha="right")
+    axes[-1].set_xticklabels(df["index"], rotation=45, ha="right", fontsize=14)
     axes[0].set_title("Hierarchy metrics (slice vs. global)")
 
     # Legend only once
@@ -431,8 +460,9 @@ def masked_auc_plot(info: Dict[str, dict], out_path: str):
     plt.bar(x + w/2, df["hier_auc"],     width=w, label="Masked AUC",    color="teal")
     plt.axhline(0.5, color="k", ls=":", lw=.8)
 
-    plt.xticks(x, df["index"], rotation=45, ha="right")
-    plt.ylabel("ROC-AUC")
+    plt.xticks(x, df["index"], rotation=45, ha="right", fontsize=14)
+    plt.ylabel("ROC-AUC", fontsize=14)
+    plt.tick_params(axis="y", labelsize=14)
     plt.ylim(0, 1)
     plt.title("Effect of HL masking on axis purity")
     plt.legend()

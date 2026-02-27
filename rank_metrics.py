@@ -123,11 +123,12 @@ def run_rank_metrics(
     plt.figure(figsize=(max(6, n), 5))
     plt.bar(x-w/2, df["mean_rank_raw"],  width=w, color=colours, label="raw")
     plt.bar(x+w/2, df["mean_rank_mask"], width=w, color=colours, alpha=0.6, label="masked")
-    plt.ylabel("Mean rank (↓ better)")
+    plt.ylabel("Mean rank (↓ better)", fontsize=14)
+    plt.tick_params(axis="y", labelsize=14)
     
     concept_labels = df.index
     
-    plt.xticks(x, concept_labels, rotation=45, ha="right")
+    plt.xticks(x, concept_labels, rotation=45, ha="right", fontsize=14)
     plt.ylim(0, df[["mean_rank_raw","mean_rank_mask"]].to_numpy().max()*1.1)
     plt.title("Mean rank of designated axis")
     plt.legend()
@@ -140,12 +141,13 @@ def run_rank_metrics(
         plt.figure(figsize=(max(6, n), 5))
         plt.bar(x-w/2, df["hit@3_raw"],  width=w, color=colours, label="raw")
         plt.bar(x+w/2, df["hit@3_mask"], width=w, color=colours, alpha=0.6, label="masked")
-        plt.ylabel("Hit@3 (↑ better)")
+        plt.ylabel("Hit@3 (↑ better)", fontsize=14)
+        plt.tick_params(axis="y", labelsize=14)
         plt.ylim(0, 1)
         plt.axhline(1.0, ls=":", color="k")
         
         # Use same concept label handling as in mean rank plot
-        plt.xticks(x, concept_labels, rotation=45, ha="right")
+        plt.xticks(x, concept_labels, rotation=45, ha="right", fontsize=14)
         plt.title("Hit@3 of designated axis")
         plt.legend()
         plt.tight_layout()
