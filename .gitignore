@@ -67,38 +67,19 @@ desktop.ini
 # Log files
 *.log
 
+# Project data and outputs
 data/
 runs/
-checkpoints/
-checkpoints-new/
 model_checkpoints/
-old-runs/
-old-runs2/
-runs_proper/
-kaggle.json
-figures/
-figures_layers/
-histories/
-/notes/
-subspace*/
-runs-newest/
 analysis/
-analysis_50/
-archives/
-new_checkpoints/
-old_checkpoints/
 figs/
+figures/
+kaggle.json
+
+# Local working directories (not part of the repo)
 figure_scripts/
 experiments/
-readmes/
-new_loss_term_data/
-nudge_results/
-BUGFIX_SUMMARY.md
-REPO_AUDIT.md
-
-# Nudge experiment artifacts (historical)
-WL7_*/
-parametersearch*/
+/notes/
 
 # Submission artifacts
 legacy/

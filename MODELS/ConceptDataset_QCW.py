@@ -5,7 +5,6 @@ from PIL import Image, ImageDraw, ImageFilter
 import numpy as np
 from torch.utils.data import Dataset
 
-# >>> FIX: match "_free", "_free0", "_free12", etc.
 _FREE_RE = re.compile(r"_free(\d+)?$", re.IGNORECASE)
 
 class ConceptDataset(Dataset):
@@ -35,7 +34,7 @@ class ConceptDataset(Dataset):
         self.samples = []
         self.hl2idx = {}
         self.sc2idx = {}
-        self.idx2sc = {}  # >>> FIX: build once for fast reverse lookup
+        self.idx2sc = {}
 
         self._subspace_mapping = {}  # { hl_name -> set(sc_name) initially, later list[int] }
         self._free_map = {}         # { hl_name -> set(sc_name) free  }
@@ -72,7 +71,6 @@ class ConceptDataset(Dataset):
                 if not os.path.isdir(sc_path):
                     continue
 
-                # >>> FIX: robust free detection
                 if _FREE_RE.search(sc_folder) is not None:
                     self._free_map[hl_lower].add(sc_folder)
                 else:
@@ -107,7 +105,6 @@ class ConceptDataset(Dataset):
 
             self._subspace_mapping[hl_name] = sc_indices
 
-        # >>> FIX: build reverse lookup once
         self.idx2sc = {idx: name for name, idx in self.sc2idx.items()}
 
     def __len__(self):

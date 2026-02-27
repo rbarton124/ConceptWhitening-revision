@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch.nn as nn
 from MODELS.iterative_normalization import IterNormRotation
@@ -22,9 +23,9 @@ class BaseQCW(nn.Module):
         # replace BN layers
         for mod_ref, c_dim, g_idx in self._bn_iter():
             if g_idx in self.whitened_layers:
-                print(f"Replacing BN layer (global index {g_idx}) with QCW layer. "
-                      f"Expected dimension: {c_dim} channels; "
-                      f"Activation mode: {self.act_mode}.")
+                logging.info("Replacing BN layer (global index %d) with QCW layer. "
+                             "Expected dimension: %d channels; Activation mode: %s.",
+                             g_idx, c_dim, self.act_mode)
                 qcw = IterNormRotation(
                     num_features=c_dim,
                     activation_mode=act_mode,

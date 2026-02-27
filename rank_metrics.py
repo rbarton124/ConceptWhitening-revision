@@ -78,7 +78,6 @@ def run_rank_metrics(
         r_raw  = ranks_raw [pos_mask, axis]
         r_mask = ranks_mask[pos_mask, axis]
 
-        mean_raw  = r_raw .mean()
         # build a single result dict for this concept
         is_lbl = axis in labeled_axes
         res = {

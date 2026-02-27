@@ -15,7 +15,7 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from rank_metrics import run_rank_metrics  # NEW helper
+from rank_metrics import run_rank_metrics
 
 # Output subdirectories
 PUR_SUBDIR = "purity"
@@ -275,8 +275,6 @@ class PurityAnalyzer:
                 "baseline_auc": prim_auc,
                 "hier_auc": hier_auc,
             }
-            # Dropped CSV columns: best_ax_hl, auc_hl, mass_global, mass_hl, mass_retained_pct, topk_global (see patch guide for rationale)
-
 
             # optional terse diagnostics
             if self.cfg.verbose and not getattr(self, "_printed", False):
@@ -517,8 +515,6 @@ def get_args():
 def main():
     args = get_args()
     logging.basicConfig(level=logging.INFO, format=LOGFMT)
-
-    
 
     wl = [int(x) for x in args.whitened_layers.split(",") if x.strip()]
     

@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -296,7 +297,7 @@ class IterNormRotation(nn.Module):
                         break
                     cnt+=1
                     if cnt>500:
-                        print("update fail")
+                        logging.warning("Cayley update did not converge")
                         break
                 Q=torch.bmm((I+0.5*tau*A).inverse(), I-0.5*tau*A)
                 R=torch.bmm(Q,R)

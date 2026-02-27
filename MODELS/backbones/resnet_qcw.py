@@ -1,3 +1,4 @@
+import logging
 import torch
 import torch.nn as nn
 import torchvision.models as models
@@ -33,13 +34,13 @@ class ResNetQCW(BaseQCW):
             self.load_model(pretrained_model)
     
     def load_model(self, pretrain_path):
-        print(f"[ResNetQCW] Loading pretrained weights from {pretrain_path} ...")
+        logging.info("Loading pretrained weights from %s ...", pretrain_path)
         import os
         import torch
         from collections import OrderedDict
         
         if not os.path.isfile(pretrain_path):
-            print(f"[Warning] File not found: {pretrain_path}")
+            logging.warning("File not found: %s", pretrain_path)
             return
             
         model_dict = self.state_dict()
@@ -53,7 +54,7 @@ class ResNetQCW(BaseQCW):
             new_sd[key] = val
         model_dict.update(new_sd)
         self.load_state_dict(model_dict)
-        print("[ResNetQCW] Pretrained weights loaded.")
+        logging.info("Pretrained weights loaded.")
 
     def forward(self, x):
         out = self.backbone.conv1(x)

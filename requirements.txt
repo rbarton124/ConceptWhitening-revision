@@ -1,0 +1,15 @@
+torch>=2.5
+torchvision>=0.20
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.6
+scikit-image>=0.25
+matplotlib>=3.10
+Pillow>=11.0
+seaborn>=0.13
+opencv-python>=4.10
+tensorboard>=2.19
+prompt-toolkit>=3.0
+rich>=14.0
+ruamel.yaml>=0.18
+tqdm>=4.67
