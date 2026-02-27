@@ -1,12 +1,14 @@
-# Quantized Concept Whitening (QCW)
+# Multi-Granularity Concept Whitening (MGCW)
 
-An implementation of **Quantized Concept Whitening** for interpretable image recognition, extending the original Concept Whitening method (Chen, Bei, and Rudin, 2020). QCW organizes latent axes into **hierarchical subspaces** — one per high-level concept — and discovers **unlabeled sub-concepts** via winner-takes-all alignment within each subspace.
+An implementation of **Multi-Granularity Concept Whitening (MGCW)** for interpretable image recognition, extending the original Concept Whitening method (Chen, Bei, and Rudin, 2020). MGCW organizes latent axes into **hierarchical subspaces** — one per high-level concept — and discovers **unlabeled sub-concepts** via winner-takes-all alignment within each subspace.
+
+> **Note:** Throughout this codebase, the method is referred to as **QCW** (Quantized Concept Whitening), an earlier working name for MGCW. All file names, class names, and function names use the `qcw` / `QCW` prefix. These are equivalent — QCW = MGCW.
 
 ## Setup
 
 ```bash
 conda env create -f environment.yml
-conda activate QCW
+conda activate MGCW
 ```
 
 ## Repository Structure
@@ -47,15 +49,15 @@ conda activate QCW
 
 Concept Whitening replaces BatchNorm layers with a whitening + rotation module. The whitening step decorrelates features via ZCA (Newton iteration). A rotation matrix Q, updated via the Cayley transform, aligns each latent axis with a labeled concept so that axis *j* fires maximally for images of concept *j*.
 
-### Quantized Concept Whitening (QCW)
+### Multi-Granularity Concept Whitening (MGCW)
 
-QCW extends the original method with three changes:
+MGCW extends the original method with three changes:
 
 1. **Subspace partitioning.** Axes are grouped into contiguous subspaces per high-level concept (e.g., axes 0-4 = "beak", 5-10 = "wing"). An axis index directly indicates which body-part subspace it belongs to.
 
 2. **Free (unlabeled) sub-concepts.** Within each subspace, some axes have no label. These are trained via winner-takes-all: each concept image activates whichever free axis responds most strongly, encouraging emergent specialization. Controlled by `--cw_lambda`.
 
-3. **Multi-architecture support.** QCW layers can replace selected BatchNorm layers in ResNet-18/50, DenseNet-121/161, or VGG16-BN via a factory pattern.
+3. **Multi-architecture support.** MGCW layers can replace selected BatchNorm layers in ResNet-18/50, DenseNet-121/161, or VGG16-BN via a factory pattern.
 
 ### Training Loop
 
@@ -179,7 +181,7 @@ python train_qcw.py \
     --concept_dir data/<CUB|COCO>/concept_data \
     --concepts wing,beak,eye,nape \
     --whitened_layers 7 \
-    --prefix QCW18_WL7 \
+    --prefix MGCW18_WL7 \
     --model resnet --depth 18 \
     --resume model_checkpoints/res18_<CUB|Places365>.pth \
     --only_load_weights
@@ -251,12 +253,12 @@ Logged metrics:
 
 ```bash
 python plot_functions.py \
-    --model_checkpoint model_checkpoints/QCW18_WL7_best.pth \
+    --model_checkpoint model_checkpoints/MGCW18_WL7_best.pth \
     --concept_dir data/<CUB|COCO>/concept_data \
     --hl_concepts wing,beak,eye,nape \
     --whitened_layers 7 \
     --model resnet --depth 18 \
-    --output_dir analysis/QCW18_WL7 \
+    --output_dir analysis/MGCW18_WL7 \
     --run_purity --topk_images --auc_max --energy_ratio --masked_auc --rank_metrics
 ```
 
@@ -280,7 +282,7 @@ Results are saved as CSVs and plots in the output directory.
 
 4. **Multiple whitened layers.** Using `--whitened_layers 2,5,8` replaces three BN layers. Each gets its own rotation matrix and alignment. Empirically, a single well-chosen layer (typically 5-7 for ResNet-18) works best.
 
-5. **Checkpoint shape mismatch.** When loading a vanilla pretrained checkpoint into a QCW model, the replaced BN layer's weights won't match (BN has `[C]` shapes, QCW has `[1,C,1,1]`). This is expected -- those keys are skipped, and the QCW layer initializes fresh.
+5. **Checkpoint shape mismatch.** When loading a vanilla pretrained checkpoint into an MGCW model, the replaced BN layer's weights won't match (BN has `[C]` shapes, MGCW has `[1,C,1,1]`). This is expected -- those keys are skipped, and the MGCW layer initializes fresh.
 
 ## Citation
 

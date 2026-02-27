@@ -26,7 +26,7 @@ from MODELS.ConceptDataset_QCW import ConceptDataset
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 # Argument Parser
-parser = argparse.ArgumentParser(description="Train Quantized Concept Whitening (QCW) - Revised")
+parser = argparse.ArgumentParser(description="Train Multi-Granularity Concept Whitening (MGCW)")
 
 # Required arguments
 parser.add_argument("--data_dir", required=True, help="Path to main dataset containing train/val/test subfolders (ImageFolder structure).")

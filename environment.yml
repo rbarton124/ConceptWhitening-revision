@@ -1,4 +1,4 @@
-name: QCW
+name: MGCW
 channels:
   - pytorch
   - nvidia
