@@ -45,9 +45,7 @@ parser.add_argument("--act_mode", default="pool_max", help="Activation mode for 
 parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs.")
 parser.add_argument("--batch_size", type=int, default=64, help="Mini-batch size.")
 parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
-parser.add_argument("--lr", type=float, default=5e-4, help="Initial learning rate.")
 parser.add_argument("--lr_decay_factor", type=float, default=0.1, help="Learning rate decay factor.")
-parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--lr_decay_epoch", type=int, default=25, help="Learning rate decay epoch.")
 parser.add_argument("--momentum", type=float, default=0.9, help="Momentum for SGD.")
 parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay (L2 reg).")
@@ -63,7 +61,6 @@ parser.add_argument("--resume", default="", type=str, help="Path to checkpoint t
 parser.add_argument("--only_load_weights", action="store_true", help="If set, only load model weights from checkpoint (ignore epoch/optimizer).")
 
 # System
-parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
 parser.add_argument("--seed", type=int, default=348129, help="Random seed.")
 parser.add_argument("--workers", type=int, default=4, help="Number of data loading workers.")
 parser.add_argument("--log_dir", type=str, default="runs", help="Directory to save logs.")
@@ -169,7 +166,6 @@ def reduce_axis_scores(featmap: torch.Tensor, act_mode: str = "pool_max") -> tor
 def build_main_loaders(args):
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(CROP_SIZE, scale=(0.5, 1.0)),
-        transforms.RandomResizedCrop(CROP_SIZE, scale=(0.5, 1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
         transforms.RandomAffine(degrees=10, translate=(0.05, 0.05), shear=5,
@@ -182,7 +178,6 @@ def build_main_loaders(args):
         transforms.Resize(RESIZE_SIZE),
         transforms.CenterCrop(CROP_SIZE),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
@@ -781,7 +776,7 @@ def compute_alignment_metrics(model, subconcept_loaders, concept_dataset, batche
     }
 
 
-def validate(loader, model: nn.DataParallel[ResNetQCW], epoch, writer: SummaryWriter, mode="Val"):
+def validate(loader, model, epoch, writer, mode="Val"):
     model.eval()
     criterion = nn.CrossEntropyLoss().cuda()
     losses = AverageMeter()
