@@ -70,7 +70,7 @@ def collect_metrics(root_dir):
 
 
 def plot_purity(results, save_dir):
-    """Side-by-side panels: QCW vs CW_ORIG purity for small and large datasets, matching russell.py formatting"""
+    """Side-by-side panels: QCW vs CW_ORIG purity for small and large datasets"""
     # Only keep panels for small and large ResNet-18
     panels = []
     for (dataset_size, depth), method_data in results.items():
@@ -108,7 +108,7 @@ def plot_purity(results, save_dir):
 
         # Plot QCW
         ax.plot(layers_qcw, purities_qcw, marker="s", color="green",
-                linewidth=2, markersize=8, label="QCW Purity")
+                linewidth=2, markersize=8, label="MGCW Purity")
         # Plot CW_ORIG if available
         if purities_cw:
             ax.plot(layers_cw, purities_cw, marker="o", color="crimson",
