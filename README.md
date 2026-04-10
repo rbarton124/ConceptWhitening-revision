@@ -286,7 +286,19 @@ Results are saved as CSVs and plots in the output directory.
 
 ## Citation
 
-If you use this code, please cite the original Concept Whitening paper:
+If you use this code, please cite our paper:
+
+```bibtex
+@inproceedings{barton2026mgcw,
+  title={Multi-Granularity Concept Whitening for Neural Network Interpretability},
+  author={Barton, Russell and Le, Hung and Shan, Yunhong and Katopodis, Alexander and Donnelly, Jonathan and Chen, Eric and Chen, Chaofan and Rudin, Cynthia},
+  booktitle={Proceedings of the CVPR 2026 Workshop on Explainable AI for Computer Vision (XAI4CV)},
+  year={2026},
+  note={to appear}
+}
+```
+
+If you also want to cite the original Concept Whitening method that MGCW builds on:
 
 ```bibtex
 @article{chen2020concept,
